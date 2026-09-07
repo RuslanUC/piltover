@@ -191,8 +191,9 @@ async def get_statuses(user_id: int) -> list[ContactStatus]:
 
 @handler.on_request(GetBirthdays, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_birthdays(user_id: int) -> ContactBirthdays:
-    yesterday = date.today() - timedelta(days=1)
-    tomorrow = date.today() + timedelta(days=1)
+    today = datetime.now(UTC).date()
+    yesterday = today - timedelta(days=1)
+    tomorrow = today + timedelta(days=1)
     birthday_users = await User.filter(
         id__in=Subquery(Contact.filter(owner_id=user_id).values_list("target_id", flat=True)),
         birthday__gte=yesterday,
@@ -417,7 +418,7 @@ async def import_contact_token(request: ImportContactToken, user_id: int) -> TLU
     try:
         token_bytes = urlsafe_b64decode(request.token)
     except ValueError:
-        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID", reason="invalid token")
+        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID", reason="invalid token")  # noqa: B904
 
     if len(token_bytes) != (8 + 8 + 256 // 8):
         raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID", reason="length is invalid")

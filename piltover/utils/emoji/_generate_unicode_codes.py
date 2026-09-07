@@ -6,7 +6,7 @@ from pathlib import Path
 #  and place it in the same directory with this script
 def main() -> None:
     parent = Path(__file__).parent
-    with open(parent / "emoji.json", "r", encoding="utf8") as f:
+    with open(parent / "emoji.json", encoding="utf8") as f:
         emojis: dict[str, dict[str, int]] = json.load(f)
 
     with open("unicode_codes.py", "w") as f:

@@ -65,9 +65,8 @@ async def get_difference(request: GetDifference | GetDifference_133, user_id: in
         )
     ) or 0
 
-    if request.pts_total_limit is not None:
-        if server_pts > (request.pts + request.pts_total_limit):
-            return DifferenceTooLong(pts=server_pts)
+    if request.pts_total_limit is not None and server_pts > (request.pts + request.pts_total_limit):
+        return DifferenceTooLong(pts=server_pts)
 
     requested_update = await Update.filter(user_id=user_id, pts__lte=request.pts).order_by("-pts").first()
     date = requested_update.date if requested_update is not None else datetime.fromtimestamp(request.date, UTC)

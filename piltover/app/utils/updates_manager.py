@@ -1,6 +1,7 @@
 from asyncio import sleep
 from time import time
-from typing import Collection, cast
+from typing import cast
+from collections.abc import Collection
 
 from loguru import logger
 from tortoise.transactions import in_transaction
@@ -80,7 +81,7 @@ async def send_message(
 
     ptss = await State.add_pts_bulk(pts_users, pts_counts)
 
-    for message, message_tl, target_user_id, new_pts in zip(messages, messages_tl, pts_users, ptss):
+    for message, message_tl, target_user_id, new_pts in zip(messages, messages_tl, pts_users, ptss, strict=True):
         if message.random_id:
             updates_to_create.append(Update(
                 update_type=UpdateType.UPDATE_MESSAGE_ID,
@@ -221,13 +222,13 @@ async def send_messages(
     ptss = await State.add_pts_bulk(pts_users, pts_counts)
 
     # TODO: maybe refactor this whole thing somehow idk
-    what = zip(messages_, messages_tl, pts_users, pts_counts, ptss)
-    for (peer, peer_messages), peer_messages_tl, target_user_id, pts_count, new_pts in what:
+    what = zip(messages_, messages_tl, pts_users, pts_counts, ptss, strict=True)
+    for (_, peer_messages), peer_messages_tl, target_user_id, pts_count, new_pts in what:
         pts = new_pts - pts_count
 
         updates = []
 
-        for message, message_tl in zip(peer_messages, peer_messages_tl):
+        for message, message_tl in zip(peer_messages, peer_messages_tl, strict=True):
             if message.random_id:
                 pts += 1
                 updates_to_create.append(Update(
@@ -290,7 +291,7 @@ async def send_messages(
             users=users,
             chats=[*chats, *channels],
         )
-        for message, tl_message in zip(prepend_existing, messages_to_add):
+        for message, tl_message in zip(prepend_existing, messages_to_add, strict=True):
             result_update.updates.append(UpdateMessageID(id=message.id, random_id=cast(int, message.random_id)))
             result_update.updates.append(UpdateNewMessage(
                 message=tl_message,
@@ -338,7 +339,7 @@ async def send_messages_channel(
         chats_and_channels = [*chats, *channels]
 
         updates = []
-        for generic_message, message, pts in zip(generic_messages, messages, update_pts):
+        for generic_message, message, pts in zip(generic_messages, messages, update_pts, strict=True):
             if message.random_id:
                 updates.append(UpdateMessageID(id=message.id, random_id=message.random_id))
             updates.append(UpdateNewChannelMessage(
@@ -372,7 +373,7 @@ async def send_messages_channel(
             users=users,
             chats=[*chats, *channels],
         )
-        for message, tl_message in zip(prepend_existing, messages_to_add):
+        for message, tl_message in zip(prepend_existing, messages_to_add, strict=True):
             result.updates.append(UpdateMessageID(id=message.id, random_id=cast(int, message.random_id)))
             result.updates.append(UpdateNewChannelMessage(
                 message=tl_message,
@@ -396,7 +397,7 @@ async def delete_messages(user: User | int | None, messages: dict[User | int, li
         [len(ids) for _, ids in messages_items]
     )
 
-    for (upd_user, message_ids), new_pts in zip(messages_items, ptss):
+    for (upd_user, message_ids), new_pts in zip(messages_items, ptss, strict=True):
         upd_user_id = upd_user.id if isinstance(upd_user, User) else upd_user
 
         update = Update(
@@ -480,7 +481,7 @@ async def edit_message(user_id: int, messages: dict[Peer, MessageRef]) -> Update
 
     ptss = await State.add_pts_bulk([peer.owner_id for peer, _ in messages_items], 1)
 
-    for (peer, message), message_tl, new_pts in zip(messages_items, messages_tl, ptss):
+    for (peer, message), message_tl, new_pts in zip(messages_items, messages_tl, ptss, strict=True):
         updates_to_create.append(
             Update(
                 user_id=peer.owner_id,
@@ -620,7 +621,7 @@ async def update_drafts(user_id: int, peers: list[Peer], drafts: Collection[Mess
     updates_to_send = []
     ucc = UsersChatsChannels()
 
-    for num, (peer, draft) in enumerate(zip(peers, drafts), start=1):
+    for num, (peer, draft) in enumerate(zip(peers, drafts, strict=True), start=1):
         updates_to_create.append(Update(
             user_id=user_id,
             update_type=UpdateType.DRAFT_UPDATE,
@@ -693,7 +694,7 @@ async def pin_messages(
     result_update = None
 
     ucc = UsersChatsChannels()
-    for peer in messages_by_peer.keys():
+    for peer in messages_by_peer:
         ucc.add_peer(peer)
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
@@ -704,7 +705,7 @@ async def pin_messages(
         [len(ids) for _, ids in messages_items],
     )
 
-    for (peer, messages), new_pts in zip(messages_items, ptss):
+    for (peer, messages), new_pts in zip(messages_items, ptss, strict=True):
         pinned_update = UpdatePinnedMessages(
             pinned=True,
             peer=peer.to_tl(),
@@ -874,7 +875,7 @@ async def update_chat_participants(chat: Chat, peers: list[Peer]) -> Updates:
     ptss = await State.add_pts_bulk(user_ids, 1)
 
     updates_to_create = []
-    for user_id, pts in zip(user_ids, ptss):
+    for user_id, pts in zip(user_ids, ptss, strict=True):
         updates_to_create.append(
             Update(
                 user_id=user_id,
@@ -1037,7 +1038,7 @@ async def update_chat(chat: Chat) -> Updates:
     ptss = await State.add_pts_bulk(participant_ids, 1)
 
     updates_to_create = []
-    for user_id, pts in zip(participant_ids, ptss):
+    for user_id, pts in zip(participant_ids, ptss, strict=True):
         updates_to_create.append(Update(
             user_id=user_id,
             update_type=UpdateType.UPDATE_CHAT,
@@ -1164,7 +1165,7 @@ async def update_read_history_outbox_channel(channel: Channel, max_ids: dict[int
     users = list(max_ids)
     ptss = await State.add_pts_bulk(users, 1)
 
-    for user_id, pts in zip(users, ptss):
+    for user_id, pts in zip(users, ptss, strict=True):
         max_id = max_ids[user_id]
         updates_to_create.append(Update(
             user_id=user_id,
@@ -1210,7 +1211,7 @@ async def update_read_history_outbox(messages: dict[Peer, int]) -> None:
     items = list(messages.items())
     ptss = await State.add_pts_bulk([peer.owner_id for peer, _ in items], 1)
 
-    for new_pts, (peer, max_id) in zip(ptss, items):
+    for new_pts, (peer, max_id) in zip(ptss, items, strict=True):
         updates_to_create.append(Update(
             user_id=peer.owner_id,
             update_type=UpdateType.READ_OUTBOX,
@@ -1307,7 +1308,7 @@ async def update_chat_default_banned_rights(chat: Chat) -> Updates:
     participants = await User.filter(chatparticipants__chat_id=chat.id, chatparticipants__left=False).only("id")
     ptss = await State.add_pts_bulk(participants, 1)
 
-    for user, pts in zip(participants, ptss):
+    for user, pts in zip(participants, ptss, strict=True):
         updates_to_create.append(Update(
             user=user,
             update_type=UpdateType.UPDATE_CHAT_BANNED_RIGHTS,
@@ -1429,7 +1430,7 @@ async def update_reactions(user_id: int, messages: list[MessageRef], peer: Peer,
     ucc.add_peer(peer)
 
     reaction_updates = []
-    for message, reactions_ in zip(messages, reactions):
+    for message, reactions_ in zip(messages, reactions, strict=True):
         ucc.add_from_tl(reactions_)
         reaction_updates.append(UpdateMessageReactions(
             peer=peer.to_tl(),
@@ -1788,7 +1789,7 @@ async def update_history_ttl(peer: Peer, ttl_days: int) -> Updates:
 
     updates_to_create: list[Update] = []
     updates_to_send: list[tuple[Updates, int]] = []
-    for update_peer, new_pts in zip(peers, ptss):
+    for update_peer, new_pts in zip(peers, ptss, strict=True):
         updates_to_create.append(Update(
             user_id=update_peer.owner_id,
             update_type=UpdateType.UPDATE_HISTORY_TTL,
@@ -1828,7 +1829,7 @@ async def migrate_chat(chat: Chat, channel: Channel, user_ids: list[int]) -> Upd
 
     ptss = await State.add_pts_bulk(user_ids, 2)
 
-    for user_id, pts in zip(user_ids, ptss):
+    for user_id, pts in zip(user_ids, ptss, strict=True):
         updates_to_create.append(Update(
             user_id=user_id, update_type=UpdateType.UPDATE_CHAT, pts=pts - 1, related_id=chat.id,
         ))

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-from typing import Generator, cast
+from typing import cast
+from collections.abc import Generator
 
 from fastrand import xorshift128plus_bytes
 from loguru import logger

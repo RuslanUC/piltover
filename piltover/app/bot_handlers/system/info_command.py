@@ -56,11 +56,11 @@ class Info(BotInteractionHandler[NoneType, NoneType]):
         )
 
         try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=1.5)
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=1.5)
         except TimeoutError as e:
             logger.opt(exception=e).warning("Failed to get git revision due to timeout")
             git_commit = "\"git rev-parse\" timed out"
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.opt(exception=e).warning("Failed to get git revision due to exception")
             git_commit = "\"git rev-parse\" timed out"
         else:
@@ -68,13 +68,11 @@ class Info(BotInteractionHandler[NoneType, NoneType]):
             if len(git_commit) != 40 or not all(c in string.hexdigits for c in git_commit):
                 logger.warning(f"\"git rev-parse\" returned invalid data: {git_commit}")
                 git_commit = "\"git rev-parse\" returned invalid data"
-            else:
-                git_commit = git_commit
 
         if proc.returncode is None:
             try:
                 proc.kill()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.opt(exception=e).warning("Failed to kill \"git rev-parse\" process")
 
         pubkey_fp_unsigned = request_ctx.get().worker.fingerprint

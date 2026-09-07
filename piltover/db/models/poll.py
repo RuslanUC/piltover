@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, UTC
 from time import time
+from typing import cast
 
 from tortoise import Model, fields
 from tortoise.functions import Count
@@ -69,12 +70,12 @@ class Poll(Model):
             return cached
 
         answer_ids = [answer.id for answer in self.pollanswers]
-        voter_counts = {
-            answer_id: voters
-            for answer_id, voters in await models.PollVote.filter(
+        voter_counts = dict(cast(
+            list[tuple[int, int]],
+            await models.PollVote.filter(
                 answer_id__in=answer_ids
             ).group_by("answer_id").annotate(voters=Count("id")).values_list("answer_id", "voters")
-        }
+        ))
 
         solution_entities = None
         if self.quiz and self.solution is not None:
@@ -129,16 +130,18 @@ class Poll(Model):
 
         poll_ids = [poll.id for poll in polls if poll.id not in cached]
         if poll_ids:
-            total_counts = {
-                poll_id: total_voters
-                for poll_id, total_voters in await models.User.filter(
-                    pollvotes__answer__poll_id__in=poll_ids,
-                ).group_by(
-                    "pollvotes__answer__poll_id",
-                ).annotate(
-                    total_voters=Count("id", distinct=True),
-                ).values_list("pollvotes__answer__poll_id", "total_voters")
-            }
+            total_counts = dict(
+                cast(
+                    list[tuple[int, int]],
+                    await models.User.filter(
+                        pollvotes__answer__poll_id__in=poll_ids,
+                    ).group_by(
+                        "pollvotes__answer__poll_id",
+                    ).annotate(
+                        total_voters=Count("id", distinct=True),
+                    ).values_list("pollvotes__answer__poll_id", "total_voters")
+                )
+            )
         else:
             total_counts = {}
 

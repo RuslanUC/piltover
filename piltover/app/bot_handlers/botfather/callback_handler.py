@@ -104,19 +104,19 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         )
         message.content.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"API Token", data=f"bots-token/{bot_id}".encode("latin1")),
-                KeyboardButtonCallback(text=f"Edit Bot", data=f"bots-edit/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="API Token", data=f"bots-token/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="Edit Bot", data=f"bots-edit/{bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"TODO Bot Settings", data=f"bots-settings/{bot_id}".encode("latin1")),
-                KeyboardButtonCallback(text=f"TODO Payments", data=f"bots-payments/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="TODO Bot Settings", data=f"bots-settings/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="TODO Payments", data=f"bots-payments/{bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"TODO Transfer Ownership", data=f"bots-transfer/{bot_id}".encode("latin1")),
-                KeyboardButtonCallback(text=f"TODO Delete Bot", data=f"bots-delete/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="TODO Transfer Ownership", data=f"bots-transfer/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="TODO Delete Bot", data=f"bots-delete/{bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"<- Back to Bot List", data=f"mybots".encode("latin1")),
+                KeyboardButtonCallback(text="<- Back to Bot List", data=b"mybots"),
             ]),
         ]).write()
         message.content.invalidate_reply_markup_cache()
@@ -165,10 +165,10 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         )
         message.content.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"Revoke current token", data=f"bots-revoke/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="Revoke current token", data=f"bots-revoke/{bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"<- Back to Bot", data=f"bots/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="<- Back to Bot", data=f"bots/{bot_id}".encode("latin1")),
             ]),
         ]).write()
         message.content.invalidate_reply_markup_cache()
@@ -206,7 +206,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         )
         message.content.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"<- Back to Bot", data=f"bots/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="<- Back to Bot", data=f"bots/{bot_id}".encode("latin1")),
             ]),
         ]).write()
         message.content.invalidate_reply_markup_cache()
@@ -263,23 +263,23 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         )
         message.content.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"Edit Name", data=f"bots-edit-name/{bot_id}".encode("latin1")),
-                KeyboardButtonCallback(text=f"Edit About", data=f"bots-edit-about/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="Edit Name", data=f"bots-edit-name/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="Edit About", data=f"bots-edit-about/{bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"Edit Description", data=f"bots-edit-desc/{bot_id}".encode("latin1")),
-                KeyboardButtonCallback(text=f"🚫 Edit Description Picture", data=f"bots-edit-descpic/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="Edit Description", data=f"bots-edit-desc/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="🚫 Edit Description Picture", data=f"bots-edit-descpic/{bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"Edit Botpic", data=f"bots-edit-pic/{bot_id}".encode("latin1")),
-                KeyboardButtonCallback(text=f"Edit Commands", data=f"bots-edit-commands/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="Edit Botpic", data=f"bots-edit-pic/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="Edit Commands", data=f"bots-edit-commands/{bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"🚫 Edit Inline Placeholder", data=f"bots-edit-inline-placeholder/{bot_id}".encode("latin1")),
-                KeyboardButtonCallback(text=f"Edit Privacy Policy", data=f"bots-edit-privacy/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="🚫 Edit Inline Placeholder", data=f"bots-edit-inline-placeholder/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="Edit Privacy Policy", data=f"bots-edit-privacy/{bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"<- Back to Bot", data=f"bots/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text="<- Back to Bot", data=f"bots/{bot_id}".encode("latin1")),
             ]),
         ]).write()
         message.content.invalidate_reply_markup_cache()

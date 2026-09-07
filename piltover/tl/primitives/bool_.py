@@ -7,7 +7,7 @@ from piltover.exceptions import InvalidConstructorException
 from piltover.tl import primitives
 
 
-class Bool(ABC):
+class Bool(ABC):  # noqa: B024
     @classmethod
     def read(cls, stream: BytesIO) -> bool:
         bool_constructor = stream.read(4)
@@ -21,7 +21,7 @@ class Bool(ABC):
         return primitives.BOOL_TRUE if value else primitives.BOOL_FALSE
 
 
-class BoolTrue(ABC):
+class BoolTrue(ABC):  # noqa: B024
     @classmethod
     def deserialize(cls, _: BytesIO) -> bool:
         return True
@@ -31,7 +31,7 @@ class BoolTrue(ABC):
         return primitives.BOOL_TRUE
 
 
-class BoolFalse(ABC):
+class BoolFalse(ABC):  # noqa: B024
     @classmethod
     def deserialize(cls, _: BytesIO) -> bool:
         return False

@@ -138,7 +138,7 @@ async def _validate_tgs(file: File) -> None:
         data = gzip.decompress(data)
         tgs = json.loads(data)
     except (gzip.BadGzipFile, json.JSONDecodeError):
-        raise ErrorRpc(error_code=400, error_message="STICKER_TGS_NOTGS")
+        raise ErrorRpc(error_code=400, error_message="STICKER_TGS_NOTGS")  # noqa: B904
 
     try:
         # TODO: if stickerset is emojis, does size need to be 100x100 in tgs?
@@ -154,7 +154,7 @@ async def _validate_tgs(file: File) -> None:
         if not await _validate_tgs_layers(tgs["layers"]):
             raise ErrorRpc(error_code=400, error_message="STICKER_TGS_NOTGS")
     except (TypeError, ValueError, KeyError):
-        raise ErrorRpc(error_code=400, error_message="STICKER_TGS_NOTGS")
+        raise ErrorRpc(error_code=400, error_message="STICKER_TGS_NOTGS")  # noqa: B904
 
     # https://github.com/TelegramMessenger/bodymovin-extension/commit/2e1dd0517a8d8346afe9fbd88cda235c4afe2c64#diff-dab7e98d55cf2baf67bc546b9d3b17846f2ef57f99eedc32d110f3f620292cbc
     # TODO: validate "Objects must not leave the canvas."
@@ -167,7 +167,7 @@ async def validate_webm(file: File, is_emoji: bool) -> None:
 
     storage = request_ctx.get().storage
     info = await extract_video_metadata_for_sticker(storage, file.physical_id)
-    duration, has_video, has_audio, is_vp9, width, height, framerate = info
+    duration, has_video, has_audio, is_vp9, _, _, framerate = info
     if duration > 3 or has_audio or not has_video or not is_vp9 or framerate > 30:
         raise ErrorRpc(error_code=400, error_message="STICKER_VIDEO_BIG")
 

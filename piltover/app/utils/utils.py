@@ -8,7 +8,8 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from contextlib import ExitStack
 from hashlib import md5
 from io import BytesIO
-from typing import Iterable, Literal, cast
+from typing import Literal, cast
+from collections.abc import Iterable
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -182,7 +183,7 @@ def _get_image_dims(location: str) -> tuple[int, int] | None:
     try:
         img = img_open(location)
         img.load()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.opt(exception=e).error("Failed to load image!")
         return None
 
@@ -551,7 +552,7 @@ async def process_reply_markup(reply_markup: ReplyMarkup | None, user: User) -> 
     for row_idx, row_to_process in enumerate(reply_markup.rows):
         if total_buttons % 10 == 0:
             await sleep(0)
-        processed_rows.append((row := KeyboardButtonRow(buttons=[])))
+        processed_rows.append(row := KeyboardButtonRow(buttons=[]))
         for col_idx, button in enumerate(row_to_process.buttons):
             if len(button.text) > 32:
                 reply_markup.text = reply_markup.text[:32]
@@ -573,6 +574,8 @@ async def process_reply_markup(reply_markup: ReplyMarkup | None, user: User) -> 
                 peer_type, peer_target_id = Peer.type_and_id_from_input_raise(
                     user.id, button.user_id, "BUTTON_USER_INVALID"
                 )
+                if peer_type is not PeerType.USER:
+                    raise ErrorRpc(error_code=400, error_message="BUTTON_USER_INVALID")
                 # TODO: use has_access_to_bulk?
                 if not await PrivacyRule.has_access_to(user, peer_target_id, PrivacyRuleKeyType.FORWARDS):
                     raise ErrorRpc(error_code=400, error_message="BUTTON_USER_PRIVACY_RESTRICTED")
@@ -582,15 +585,9 @@ async def process_reply_markup(reply_markup: ReplyMarkup | None, user: User) -> 
                     raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
                 if not button.copy_text or len(button.copy_text) > 256:
                     raise ErrorRpc(error_code=400, error_message="BUTTON_COPY_TEXT_INVALID")
-            elif isinstance(button, KeyboardButton):
-                if is_inline:
-                    raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
-            elif isinstance(button, KeyboardButtonRequestPhone):
-                if is_inline:
-                    raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
-            elif isinstance(button, KeyboardButtonRequestPoll):
-                if is_inline:
-                    raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
+            elif isinstance(button, (KeyboardButton, KeyboardButtonRequestPhone, KeyboardButtonRequestPoll)) \
+                    and is_inline:
+                raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
             elif isinstance(button, InputKeyboardButtonRequestPeer):
                 if is_inline:
                     raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")

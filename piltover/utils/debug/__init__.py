@@ -1,6 +1,6 @@
 from time import perf_counter
 from contextlib import contextmanager
-from typing import Generator
+from collections.abc import Generator
 
 from piltover.utils.debug.tracing import Tracing, TraceTime
 

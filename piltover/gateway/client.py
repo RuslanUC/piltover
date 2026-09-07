@@ -96,8 +96,8 @@ class Client:
 
         try:
             recv = await self.reader.read(32 * 1024)
-        except ConnectionResetError:
-            raise Disconnection
+        except ConnectionResetError as e:
+            raise Disconnection from e
         if not recv:
             raise Disconnection
 
@@ -116,10 +116,10 @@ class Client:
             async with self.write_lock:
                 self.writer.write(to_send)
                 await self.writer.drain()
-        except ConnectionResetError:
+        except ConnectionResetError as e:
             if ignore_errors:
                 return
-            raise Disconnection
+            raise Disconnection from e
         except Exception as e:
             if ignore_errors:
                 return
@@ -170,7 +170,7 @@ class Client:
         ).write().hex()
 
         with measure_time(".kiq()"):
-            return await AsyncKicker(task_name=f"handle_tl_rpc", broker=self.server.broker, labels={}).kiq(call_rpc)
+            return await AsyncKicker(task_name="handle_tl_rpc", broker=self.server.broker, labels={}).kiq(call_rpc)
 
     async def handle_unencrypted_message(self, obj: TLObject) -> None:
         # TODO: move it to worker (and add db models to save auth key generation state)
@@ -182,7 +182,7 @@ class Client:
         except Disconnection as d:
             logger.opt(exception=d).warning(f"Requested disconnection while processing {obj.tlname()}")
             raise
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.opt(exception=e).warning(f"Error while processing {obj.tlname()}")
 
     async def handle_encrypted_message(self, req_message: Message, session: Session) -> None:
@@ -307,9 +307,9 @@ class Client:
     async def decrypt(message: EncryptedMessagePacket, auth_key: bytes, v1: bool = False) -> DecryptedMessagePacket:
         try:
             return message.decrypt(auth_key, ConnectionRole.CLIENT, v1)
-        except ValueError:
+        except ValueError as e:
             logger.info("Failed to decrypt encrypted packet, disconnecting with 404")
-            raise Disconnection(404)
+            raise Disconnection(404) from e
 
     async def _worker_loop_recv(self) -> None:
         while True:
@@ -425,7 +425,7 @@ class Client:
                     task_result = await self._wait_result_with_ack(
                         task, request.message_id, session, request.obj.__class__.__name__
                     )
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     logger.opt(exception=e).error(f"Failed to get result for request {request!r}")
                     return RpcResult(
                         req_msg_id=request.message_id,

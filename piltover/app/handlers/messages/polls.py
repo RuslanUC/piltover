@@ -122,7 +122,6 @@ async def send_vote(request: SendVote, user_id: int) -> Updates:
     if len(request.options) > 1 and not message.content.media.poll.multiple_choices:
         raise ErrorRpc(error_code=400, error_message="OPTIONS_TOO_MUCH")
 
-    answer: PollAnswer
     options = {answer.option: answer async for answer in PollAnswer.filter(poll=message.content.media.poll)}
 
     votes_to_create = []

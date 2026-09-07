@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast, ClassVar
 
 from piltover.auth_data import AuthData
 from piltover.context import NeedContextValuesContext
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 class SessionManager:
-    sessions: dict[tuple[int, int], Session] = {}
+    sessions: ClassVar[dict[tuple[int, int], Session]] = {}
     broker: BaseMessageBroker = None  # type: ignore[assignment]
 
     @classmethod

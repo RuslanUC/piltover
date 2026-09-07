@@ -6,7 +6,8 @@ Components for detecting and tokenizing emoji in strings.
 
 """
 
-from typing import NamedTuple, Iterator, Any
+from typing import NamedTuple, Any
+from collections.abc import Iterator
 from .unicode_codes import EMOJIS, COMPONENTS
 
 

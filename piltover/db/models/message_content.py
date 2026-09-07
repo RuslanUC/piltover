@@ -4,7 +4,8 @@ import asyncio
 from datetime import datetime, UTC
 from io import BytesIO
 from os import environ
-from typing import Self, Sequence, cast
+from typing import Self, cast
+from collections.abc import Sequence
 from uuid import uuid4, UUID
 
 from loguru import logger
@@ -173,13 +174,13 @@ class MessageContent(Model):
         ]
         medias = {
             media.id: media_tl
-            for media, media_tl in zip(medias_, await models.MessageMedia.to_tl_bulk(medias_))
+            for media, media_tl in zip(medias_, await models.MessageMedia.to_tl_bulk(medias_), strict=True)
         }
 
         to_cache = []
 
         result: list[MessageToFormatContent | MessageToFormatServiceContent] = []
-        for message, cached_message in zip(messages, cached):
+        for message, cached_message in zip(messages, cached, strict=True):
             if message.is_service():
                 result.append(message.to_tl_service_content())
                 continue
@@ -296,7 +297,8 @@ class MessageContent(Model):
         new_contents = []
         internal_random_ids = []
 
-        for content, fwd_header, post_info, media_group_id in zip(contents, fwd_headers, post_infos, media_group_ids):
+        what = zip(contents, fwd_headers, post_infos, media_group_ids, strict=True)
+        for content, fwd_header, post_info, media_group_id in what:
             new_author_c = new_author
             new_channel_author_id_c = new_channel_author_id
             anonymous_c = anonymous

@@ -122,7 +122,7 @@ class Channel(ChatBase):
 
         processing_channels = [
             channel
-            for channel, cached in zip(channels, cached_channels)
+            for channel, cached in zip(channels, cached_channels, strict=True)
             if cached is None if not channel.deleted
         ]
         channel_ids = [channel.id for channel in processing_channels]
@@ -143,13 +143,10 @@ class Channel(ChatBase):
             }
         else:
             # TODO: dont fetch usernames if already prefetched
-            usernames = {
-                channel_id: username
-                for channel_id, username in await models.Username.filter(
-                    channel_id__in=channel_ids,
-                ).values_list("channel_id", "username")
-            }
-
+            usernames = dict(cast(
+                list[tuple[int, str]],
+                await models.Username.filter(channel_id__in=channel_ids).values_list("channel_id", "username")
+            ))
         if not channel_ids:
             photos = {}
         elif len(channel_ids) == 1:
@@ -174,7 +171,7 @@ class Channel(ChatBase):
 
         tl = []
         to_cache = []
-        for channel, cached in zip(channels, cached_channels):
+        for channel, cached in zip(channels, cached_channels, strict=True):
             if cached is not None:
                 tl.append(cached)
                 continue
@@ -238,7 +235,7 @@ class Channel(ChatBase):
 
         result = await Cache.obj.multi_get([channel.cache_key() for channel in channels])
 
-        non_cached = [channel for channel, cached in zip(channels, result) if cached is None]
+        non_cached = [channel for channel, cached in zip(channels, result, strict=True) if cached is None]
         if not non_cached:
             return result
 
@@ -261,7 +258,7 @@ class Channel(ChatBase):
             for tl_channel in await Channel.to_tl_bulk(non_cached)
         }
 
-        for idx, (channel, cached) in enumerate(zip(channels, result)):
+        for idx, (channel, cached) in enumerate(zip(channels, result, strict=True)):
             if cached is None:
                 result[idx] = tl_channels[channel.id]
 

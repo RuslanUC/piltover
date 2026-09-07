@@ -35,7 +35,7 @@ async def send_code(request: SendCode, user_id: int) -> SentCode:
         if int(request.phone_number) < 100000:
             raise ValueError
     except ValueError:
-        raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
+        raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")  # noqa: B904
 
     random_hash = urandom(16)
     resp = SentCode(random_hash=random_hash)
@@ -66,7 +66,7 @@ async def sign_in(request: SignIn, user_id: int) -> Authorization:
         if int(request.phone_number) < 100000:
             raise ValueError
     except ValueError:
-        raise ErrorRpc(error_code=10400, error_message="PHONE_NUMBER_INVALID")
+        raise ErrorRpc(error_code=10400, error_message="PHONE_NUMBER_INVALID")  # noqa: B904
 
     webauth = await WebAuthorization.get_or_none(
         phone_number=request.phone_number, random_hash=request.random_hash.hex(), expires_at__gt=int(time()),

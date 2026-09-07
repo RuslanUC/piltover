@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TypeVar, Self, cast, Sequence
+from typing import TypeVar, Self, cast
+from collections.abc import Sequence
 
 from loguru import logger
 from tortoise import fields, Model
@@ -234,7 +235,7 @@ class MessageRef(Model):
 
         message_content_ids = {
             ref.content.id
-            for ref, cached_ref in zip(refs, cached)
+            for ref, cached_ref in zip(refs, cached, strict=True)
             if cached_ref is None and not ref.content.is_service()
         }
 
@@ -267,7 +268,7 @@ class MessageRef(Model):
         to_cache = []
 
         result = []
-        for ref, cached_ref in zip(refs, cached):
+        for ref, cached_ref in zip(refs, cached, strict=True):
             if cached_ref is not None:
                 result.append(cached_ref)
                 continue
@@ -305,12 +306,9 @@ class MessageRef(Model):
         contents = await models.MessageContent.to_tl_content_bulk(raw_contents)
         repliess = await MessageRef.to_tl_replies_bulk(messages)
 
-        if len(contents) != len(refs):
-            raise Unreachable(f"len(contents) != len(refs), {len(contents)} != {len(refs)}")
-
         return [
             MessageToFormat(ref=ref, content=content, reactions=reactions, replies=replies)
-            for ref, content, reactions, replies in zip(refs, contents, reactionss, repliess)
+            for ref, content, reactions, replies in zip(refs, contents, reactionss, repliess, strict=True)
         ]
 
     @classmethod
@@ -321,12 +319,9 @@ class MessageRef(Model):
         contents = await models.MessageContent.to_tl_content_bulk(raw_contents)
         repliess = await MessageRef.to_tl_replies_bulk(messages)
 
-        if len(contents) != len(commons):
-            raise Unreachable(f"len(contents) != len(commons), {len(contents)} != {len(commons)}")
-
         return [
             ChannelMessageToFormat(common=common, content=content, replies=replies)
-            for common, content, replies in zip(commons, contents, repliess)
+            for common, content, replies in zip(commons, contents, repliess, strict=True)
         ]
 
     async def to_tl_maybecached(self, user_id: int, with_reactions: bool = True) -> TLMessageBase:
@@ -375,7 +370,7 @@ class MessageRef(Model):
         need_fetch_refs = []
         need_fetch_contents = []
 
-        for ref, ref_cached, content_cached in zip(refs, refs_cached, contents_cached):
+        for ref, ref_cached, content_cached in zip(refs, refs_cached, contents_cached, strict=True):
             if content_cached is None and not ref.content.is_service():
                 need_fetch_contents.append(ref)
             elif ref_cached is None:
@@ -387,11 +382,11 @@ class MessageRef(Model):
             await MessageRef.fetch_for_list(need_fetch_contents, *cls._FETCH_CACHED_CONTENTS)
 
         refs_tl = await cls.to_tl_ref_bulk([
-            ref for ref, cached in zip(refs, refs_cached) if cached is None
+            ref for ref, cached in zip(refs, refs_cached, strict=True) if cached is None
         ], user_id, True)
         refs_tl.reverse()
         contents_tl = await models.MessageContent.to_tl_content_bulk([
-            ref.content for ref, cached in zip(refs, contents_cached) if cached is None
+            ref.content for ref, cached in zip(refs, contents_cached, strict=True) if cached is None
         ], True)
         contents_tl.reverse()
         if with_reactions:
@@ -401,8 +396,8 @@ class MessageRef(Model):
         replies_tl = await cls.to_tl_replies_bulk(refs)
 
         results = []
-        zipped = zip(refs, refs_cached, contents_cached, reactionss_tl, replies_tl)
-        for ref, result_ref, result_content, result_reactions, result_replies in zipped:
+        zipped = zip(refs_cached, contents_cached, reactionss_tl, replies_tl, strict=True)
+        for result_ref, result_content, result_reactions, result_replies in zipped:
             if result_ref is None:
                 result_ref = refs_tl.pop()
             if result_content is None:
@@ -544,7 +539,7 @@ class MessageRef(Model):
             return []
 
         messages = []
-        for content, random_id, pinned_ in zip(new_contents, random_ids, pinned):
+        for content, random_id, pinned_ in zip(new_contents, random_ids, pinned, strict=True):
             for peer in peers:
                 # TODO: fill reply_to_id
                 messages.append(models.MessageRef(
@@ -570,7 +565,7 @@ class MessageRef(Model):
 
         replies_by_content_id = {
             content.id: reply_to_content_id
-            for content, reply_to_content_id in zip(new_contents, reply_to_content_ids)
+            for content, reply_to_content_id in zip(new_contents, reply_to_content_ids, strict=True)
             if reply_to_content_id is not None
         }
 
@@ -613,7 +608,7 @@ class MessageRef(Model):
         elif isinstance(author, int):
             author_kwargs["author_id"] = author
         else:
-            raise ValueError(f"Expected User or int, got {author}")
+            raise TypeError(f"Expected User or int, got {author}")
 
         scheduled_by_user_id = message_kwargs.pop("scheduled_by_user_id", None)
 
@@ -813,7 +808,7 @@ class MessageRef(Model):
 
         not_cached_ids = [
             ref.content_id
-            for ref, cached in zip(messages, cached_reactions)
+            for ref, cached in zip(messages, cached_reactions, strict=True)
             if cached is None and ref.content.type is MessageType.REGULAR
         ]
         if not_cached_ids:
@@ -834,7 +829,7 @@ class MessageRef(Model):
         to_cache = []
         recent_to_fetch = []
 
-        for ref, cached, cache_key in zip(messages, cached_reactions, cache_keys):
+        for ref, cached, cache_key in zip(messages, cached_reactions, cache_keys, strict=True):
             if ref.content.type is not MessageType.REGULAR:
                 results.append(None)
                 continue
@@ -1031,12 +1026,10 @@ class MessageRef(Model):
             )
         }
 
-        discussion_channel_ids: dict[int, int] = {
-            msg_id: channel_id
-            for msg_id, channel_id in await models.MessageRef.filter(
-                id__in=channel_ids_to_get,
-            ).values_list("id", "peer__channel_id")
-        }
+        discussion_channel_ids = dict(cast(
+            list[tuple[int, int]],
+            await models.MessageRef.filter(id__in=channel_ids_to_get).values_list("id", "peer__channel_id")
+        ))
 
         to_cache = []
         replies = []

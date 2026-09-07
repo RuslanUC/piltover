@@ -91,14 +91,14 @@ async def new_account_btn_handler(message: Message, state: FSMContext) -> None:
     max_per_user = SYSTEM_CONFIG.telegram_integration.max_accounts_per_user
     if max_per_user <= 0:
         await message.answer(
-            text=f"New accounts registration is currently disabled.",
+            text="New accounts registration is currently disabled.",
             reply_markup=MAIN_KEYBOARD,
         )
         return
 
     if await TelegramUser.filter(telegram_id=message.from_user.id).count() > max_per_user:
         await message.answer(
-            text=f"You already have created maximum number of accounts.",
+            text="You already have created maximum number of accounts.",
             reply_markup=MAIN_KEYBOARD,
         )
         return
@@ -114,7 +114,7 @@ async def new_account_btn_handler(message: Message, state: FSMContext) -> None:
 async def new_account_first_name_handler(message: Message, state: FSMContext) -> None:
     if not message.text or len(message.text) > 64 or "\n" in message.text:
         await message.answer(
-            text=f"Invalid first name. It should be 1-64 characters in length and be a single line.",
+            text="Invalid first name. It should be 1-64 characters in length and be a single line.",
             reply_markup=_make_first_name_kbd(message),
         )
         return
@@ -131,7 +131,7 @@ async def new_account_first_name_handler(message: Message, state: FSMContext) ->
 async def new_account_last_name_handler(message: Message, state: FSMContext) -> None:
     if not message.text or len(message.text) > 64 or "\n" in message.text:
         await message.answer(
-            text=f"Invalid last name. It should be 1-64 characters in length and be a single line.",
+            text="Invalid last name. It should be 1-64 characters in length and be a single line.",
             reply_markup=_make_last_name_kbd(message),
         )
         return
@@ -142,7 +142,7 @@ async def new_account_last_name_handler(message: Message, state: FSMContext) -> 
     policy = SYSTEM_CONFIG.telegram_integration.phone_number_policy
     if policy == "real":
         await message.answer(
-            text=f"Share your phone number with bot and it will be used to create new account.",
+            text="Share your phone number with bot and it will be used to create new account.",
             reply_markup=_make_phone_number_kbd(),
         )
         return
@@ -155,7 +155,7 @@ async def new_account_last_name_handler(message: Message, state: FSMContext) -> 
         else:
             await state.clear()
             await message.answer(
-                text=f"Failed to find a random unused phone number! Please try to create account again.",
+                text="Failed to find a random unused phone number! Please try to create account again.",
                 reply_markup=MAIN_KEYBOARD,
             )
             return
@@ -163,7 +163,7 @@ async def new_account_last_name_handler(message: Message, state: FSMContext) -> 
         await state.update_data(phone_number=random_phone)
     elif policy == "user-provided":
         await message.answer(
-            text=f"Send phone number that will be used for new account.",
+            text="Send phone number that will be used for new account.",
             reply_markup=_make_phone_number_kbd(),
         )
         return
@@ -188,7 +188,7 @@ async def new_account_phone_number_handler(message: Message, state: FSMContext) 
     if message.contact is not None:
         if message.contact.user_id != message.from_user.id:
             await message.answer(
-                text=f"You need to share your own phone number with the bot.",
+                text="You need to share your own phone number with the bot.",
                 reply_markup=_make_phone_number_kbd(),
             )
             return
@@ -196,7 +196,7 @@ async def new_account_phone_number_handler(message: Message, state: FSMContext) 
     else:
         if SYSTEM_CONFIG.telegram_integration.phone_number_policy == "real":
             await message.answer(
-                text=f"Share your phone number with bot and it will be used to create new account.",
+                text="Share your phone number with bot and it will be used to create new account.",
                 reply_markup=_make_phone_number_kbd(),
             )
             return
@@ -205,7 +205,7 @@ async def new_account_phone_number_handler(message: Message, state: FSMContext) 
             phone_number = _validate_phone(message.text or "")
         except ErrorRpc:
             await message.answer(
-                text=f"Invalid phone number. Try another one.",
+                text="Invalid phone number. Try another one.",
                 reply_markup=_make_phone_number_kbd(),
             )
             return
@@ -224,8 +224,8 @@ async def _create_new_user(message: Message, state: FSMContext) -> None:
         except IntegrityError:
             await message.answer(
                 text=(
-                    f"Failed to create account (possibly because user with specified phone number already exists). "
-                    f"You can try to create account again."
+                    "Failed to create account (possibly because user with specified phone number already exists). "
+                    "You can try to create account again."
                 ),
                 reply_markup=MAIN_KEYBOARD,
             )

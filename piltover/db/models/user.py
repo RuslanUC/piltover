@@ -4,7 +4,8 @@ import hashlib
 import hmac
 from datetime import date
 from enum import auto, Enum
-from typing import Iterable, cast
+from typing import cast
+from collections.abc import Iterable
 
 from tortoise import fields, Model
 from tortoise.expressions import Q, F
@@ -234,12 +235,10 @@ class User(Model):
                 if user.id not in cached_users and not user.username_prefetched
             ]
             if fetch_usernames_ids:
-                usernames = {
-                    user_id: username
-                    for user_id, username in await models.Username.filter(
-                        user_id__in=fetch_usernames_ids,
-                    ).values_list("user_id", "username")
-                }
+                usernames = dict(cast(
+                    list[tuple[int, str]],
+                    await models.Username.filter(user_id__in=fetch_usernames_ids).values_list("user_id", "username")
+                ))
             else:
                 usernames = {}
             for user in users:
@@ -270,20 +269,22 @@ class User(Model):
             background_emojis = {}
 
         if bot_ids:
-            bot_versions = {
-                user_id: version
-                for user_id, version in await models.BotInfo.filter(
-                    user_id__in=[
-                        user.id
-                        for user in users
-                        if (
-                                user.bot
-                                and user.id not in cached_users
-                                and not user.bot_info_prefetched
-                        )
-                    ],
-                ).values_list("user_id", "version")
-            }
+            bot_versions = dict(
+                cast(
+                    list[tuple[int, int]],
+                    await models.BotInfo.filter(
+                        user_id__in=[
+                            user.id
+                            for user in users
+                            if (
+                                    user.bot
+                                    and user.id not in cached_users
+                                    and not user.bot_info_prefetched
+                            )
+                        ],
+                    ).values_list("user_id", "version")
+                )
+            )
             for user in users:
                 if user.bot_info_prefetched:
                     bot_versions[user.id] = user.bot_info.version
@@ -402,7 +403,7 @@ class User(Model):
 
         result = await Cache.obj.multi_get([user._cache_key() for user in users])
 
-        non_cached = [user for user, cached in zip(users, result) if cached is None]
+        non_cached = [user for user, cached in zip(users, result, strict=True) if cached is None]
         if not non_cached:
             return result
 
@@ -422,7 +423,7 @@ class User(Model):
             for tl_user in await User.to_tl_bulk(non_cached)
         }
 
-        for idx, (user, cached) in enumerate(zip(users, result)):
+        for idx, (user, cached) in enumerate(zip(users, result, strict=True)):
             if cached is None:
                 result[idx] = tl_users[user.id]
 

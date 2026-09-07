@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from tortoise import fields, Model
 from tortoise.expressions import Subquery, Q, F
@@ -98,18 +98,18 @@ class PrivacyRule(Model):
 
                 to_update = []
                 to_create = []
-                for user in await models.User.filter(id__in=all_users):
-                    allow = user.id in allow_users
-                    if user.id in existing:
-                        exc = existing[user.id]
+                for exception_user in await models.User.filter(id__in=all_users):
+                    allow = exception_user.id in allow_users
+                    if exception_user.id in existing:
+                        exc = existing[exception_user.id]
                         if exc.allow != allow:
                             exc.allow = allow
                             to_update.append(exc)
                     else:
                         to_create.append(models.PrivacyRuleException(
                             rule=rule,
-                            user=user,
-                            allow=user.id in allow_users,
+                            user=exception_user,
+                            allow=exception_user.id in allow_users,
                         ))
 
                 if to_create:
@@ -221,16 +221,12 @@ class PrivacyRule(Model):
 
         if this_user_id in user_ids:
             user_ids.remove(this_user_id)
-            results[this_user_id] = {
-                key: True for key in keys
-            }
+            results[this_user_id] = dict.fromkeys(keys, True)
 
         for target_user in users:
             if isinstance(target_user, models.User) and target_user.bot:
                 user_ids.discard(target_user.id)
-                results[target_user.id] = {
-                    key: True for key in keys
-                }
+                results[target_user.id] = dict.fromkeys(keys, True)
 
         if not user_ids:
             return results
@@ -254,7 +250,7 @@ class PrivacyRule(Model):
             for key in keys
         }
 
-        for rule, allowed in zip(rules_simple, cached_all):
+        for rule, allowed in zip(rules_simple, cached_all, strict=True):
             if allowed is None:
                 not_cached_ids.append(rule.id)
             else:

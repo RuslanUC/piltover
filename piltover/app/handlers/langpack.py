@@ -89,7 +89,7 @@ async def get_langpack(request: GetLangPack | GetLangPack_72) -> LangPackDiffere
             from_version=0,
         ))
     except ErrorRpc:
-        raise ErrorRpc(error_code=400, error_message="LANG_CODE_NOT_SUPPORTED")
+        raise ErrorRpc(error_code=400, error_message="LANG_CODE_NOT_SUPPORTED")  # noqa: B904
 
 
 @handler.on_request(GetStrings_72, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)

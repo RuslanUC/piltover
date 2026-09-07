@@ -38,7 +38,7 @@ async def _get_wallpaper(request: SetChatWallPaper, user_id: int, peer: Peer) ->
         try:
             action = TLObject.read(BytesIO(service_message.content.extra_info))
         except Error:
-            raise ErrorRpc(error_code=400, error_message="WALLPAPER_NOT_FOUND")
+            raise ErrorRpc(error_code=400, error_message="WALLPAPER_NOT_FOUND")  # noqa: B904
 
         if isinstance(action, MessageActionSetChatWallPaper):
             wallpaper_id = action.wallpaper.id

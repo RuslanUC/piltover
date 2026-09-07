@@ -15,9 +15,9 @@ from piltover.db.enums import SystemObjectType, FileType, StickerSetOfficialType
     EmojiGroupType
 from piltover.exceptions import Unreachable
 from piltover.tl import Long, BaseThemeClassic, BaseThemeDay, BaseThemeNight, BaseThemeArctic, BaseThemeTinted
+from piltover.db.models import File
 
 if TYPE_CHECKING:
-    from piltover.db.models import File
     from piltover.app.app import ArgsNamespace
 
 
@@ -26,7 +26,7 @@ async def _upload_doc(data_dir: Path, base_dir: Path, idx: int, doc: dict, file_
 
     from piltover.tl.types import DocumentAttributeImageSize, DocumentAttributeSticker, DocumentAttributeFilename, \
         DocumentAttributeCustomEmoji
-    from piltover.db.models import File, SystemObjectId
+    from piltover.db.models import SystemObjectId
     from piltover.app.utils.utils import PHOTOSIZE_TO_INT
 
     cls_name_to_cls = {
@@ -43,7 +43,7 @@ async def _upload_doc(data_dir: Path, base_dir: Path, idx: int, doc: dict, file_
     for thumb in doc["thumbs"]:
         if thumb["_"] != "types.PhotoPathSize" or thumb["_"] != "j":
             continue
-        with open(base_files_dir / f"{doc['id']}-{idx}-thumb-j.bin", "rb") as f:
+        with open(base_files_dir / f"{doc['id']}-{idx}-thumb-j.bin", "rb") as f:  # noqa: ASYNC230
             photo_path = f.read()
         break
 
@@ -107,17 +107,21 @@ async def _upload_doc(data_dir: Path, base_dir: Path, idx: int, doc: dict, file_
     photos_dir = data_dir / "photos"
     docs_dir = data_dir / "documents"
 
-    with open(base_files_dir / f"{doc['id']}-{idx}.{ext}", "rb") as f_in:
-        with open(docs_dir / f"{file.physical_id}", "wb") as f_out:
-            f_out.write(f_in.read())
+    with (
+        open(base_files_dir / f"{doc['id']}-{idx}.{ext}", "rb") as f_in,  # noqa: ASYNC230
+        open(docs_dir / f"{file.physical_id}", "wb") as f_out  # noqa: ASYNC230
+    ):
+        f_out.write(f_in.read())
 
     for thumb in doc["thumbs"]:
         if thumb["_"] != "types.PhotoSize":
             continue
         width = PHOTOSIZE_TO_INT[thumb["type"]]
-        with open(base_files_dir / f"{doc['id']}-{idx}-thumb-{thumb['type']}.{ext}", "rb") as f_in:
-            with open(photos_dir / f"{file.physical_id}-{width}", "wb") as f_out:
-                f_out.write(f_in.read())
+        with (
+            open(base_files_dir / f"{doc['id']}-{idx}-thumb-{thumb['type']}.{ext}", "rb") as f_in,  # noqa: ASYNC230
+            open(photos_dir / f"{file.physical_id}-{width}", "wb") as f_out,  # noqa: ASYNC230
+        ):
+            f_out.write(f_in.read())
 
         file.photo_sizes.append({
             "type_": thumb["type"],
@@ -156,7 +160,7 @@ async def _create_reactions(args: ArgsNamespace) -> None:
         except ValueError:
             continue
 
-        with open(reactions_dir / reaction_file) as f:
+        with open(reactions_dir / reaction_file) as f:  # noqa: ASYNC230
             reaction_info = json.load(f)
 
         defaults = {"title": reaction_info["title"], "reaction": reaction_info["reaction"]}
@@ -207,7 +211,7 @@ async def _create_chat_themes(args: ArgsNamespace) -> None:
         except ValueError:
             continue
 
-        with open(chat_themes_dir / chat_theme_file) as f:
+        with open(chat_themes_dir / chat_theme_file) as f:  # noqa: ASYNC230
             theme_info = json.load(f)
 
         defaults = {
@@ -351,7 +355,7 @@ async def _create_peer_colors(colors_dir: Path) -> None:
         if not accent_file.endswith(".json") or not accent_file.split(".")[0].isdigit():
             continue
 
-        with open(accent_dir / accent_file) as f:
+        with open(accent_dir / accent_file) as f:  # noqa: ASYNC230
             color_info = json.load(f)
 
         colors = color_info["colors"]["colors"]
@@ -389,7 +393,7 @@ async def _create_peer_colors(colors_dir: Path) -> None:
         if not profile_file.endswith(".json") or not profile_file.split(".")[0].isdigit():
             continue
 
-        with open(profile_dir / profile_file) as f:
+        with open(profile_dir / profile_file) as f:  # noqa: ASYNC230
             color_info = json.load(f)
 
         colors = color_info["colors"]
@@ -485,10 +489,10 @@ async def _create_languages(langs_dir: Path) -> None:
         for lang in listdir(platform_dir):
             lang_dir = platform_dir / lang
 
-            with open(lang_dir / "info.json") as f:
+            with open(lang_dir / "info.json") as f:  # noqa: ASYNC230
                 lang_info = json.load(f)
 
-            with open(lang_dir / "strings.json") as f:
+            with open(lang_dir / "strings.json") as f:  # noqa: ASYNC230
                 lang_strings = json.load(f)
 
             language, created = await Language.update_or_create(
@@ -522,9 +526,6 @@ async def _create_languages(langs_dir: Path) -> None:
                 else:
                     value = new_string["value"]
 
-                deleted = deleted
-                plural = plural
-                value = value
                 zero_value = new_string.get("zero_value") if plural else None
                 one_value = new_string.get("one_value") if plural else None
                 two_value = new_string.get("two_value") if plural else None
@@ -604,7 +605,7 @@ async def _create_system_stickers(args: ArgsNamespace) -> None:
     from os import listdir
     import json
 
-    from piltover.db.models import Stickerset, File, SystemObjectId
+    from piltover.db.models import Stickerset, SystemObjectId
 
     type_name_to_type = {
         "animated_emoji": StickerSetOfficialType.ANIMATED_EMOJI,
@@ -632,7 +633,7 @@ async def _create_system_stickers(args: ArgsNamespace) -> None:
         if not info_file.exists():
             continue
 
-        with open(info_file) as f:
+        with open(info_file) as f:  # noqa: ASYNC230
             sticker_set = json.load(f)
             set_info = sticker_set["set"]
 
@@ -718,7 +719,7 @@ async def _create_emoji_groups(groups_dir: Path) -> None:
             logger.warning(f"Emoji group file for \"{group_type_name}\" does not exist, skipping")
             continue
 
-        with open(info_file) as f:
+        with open(info_file) as f:  # noqa: ASYNC230
             groups_info = json.load(f)
             groups = groups_info["groups"]
 
@@ -819,7 +820,7 @@ async def create_system_data(
         import json
         from piltover.db.models import AuthCountry, AuthCountryCode
 
-        with open(auth_countries_file) as f:
+        with open(auth_countries_file) as f:  # noqa: ASYNC230
             countries = json.load(f)
 
         for country in countries:
@@ -840,16 +841,19 @@ async def create_system_data(
         await _create_chat_themes(args)
 
     if peer_colors:
-        assert args.peer_colors_dir is not None
+        if args.peer_colors_dir is None:
+            raise RuntimeError
         await _create_peer_colors(args.peer_colors_dir)
 
     if languages:
-        assert args.languages_dir is not None
+        if args.languages_dir is None:
+            raise RuntimeError
         await _create_languages(args.languages_dir)
 
     if system_stickersets:
         await _create_system_stickers(args)
 
     if emoji_groups:
-        assert args.emoji_groups_dir is not None
+        if args.emoji_groups_dir is None:
+            raise RuntimeError
         await _create_emoji_groups(args.emoji_groups_dir)

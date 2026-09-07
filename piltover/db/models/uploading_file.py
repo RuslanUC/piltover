@@ -45,7 +45,7 @@ class UploadingFile(Model):
             raise ErrorRpc(error_code=400, error_message="FILE_PARTS_INVALID", reason=f"{parts_num} != len({parts})")
 
         if parts[0].part_id != 0:
-            raise ErrorRpc(error_code=400, error_message=f"FILE_PART_0_MISSING")
+            raise ErrorRpc(error_code=400, error_message="FILE_PART_0_MISSING")
 
         size = parts[0].size
         for idx in range(1, len(parts)):
@@ -77,7 +77,7 @@ class UploadingFile(Model):
             from piltover.app.utils.utils import extract_video_metadata
 
             location = await component.get_location(self.physical_id)
-            duration, has_video, has_audio, thumb = await extract_video_metadata(location)
+            duration, _, _, thumb = await extract_video_metadata(location)
             if duration > 0:
                 file.duration = duration
             if thumb is not None and thumb_bytes is None:

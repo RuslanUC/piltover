@@ -1,5 +1,6 @@
 from itertools import islice
-from typing import TypeVar, Callable, Awaitable, Iterable
+from typing import TypeVar
+from collections.abc import Callable, Awaitable, Iterable
 
 T = TypeVar("T")
 TAdd = TypeVar("TAdd")
@@ -26,7 +27,7 @@ class classinstancemethod:
 
 
 def xor(a: bytes, b: bytes) -> bytes:
-    return bytes(i ^ j for i, j in zip(a, b))
+    return bytes(i ^ j for i, j in zip(a, b, strict=True))
 
 
 def sec_check(cond: bool, exc: type[Exception] = Exception, msg: str | None = None) -> None:

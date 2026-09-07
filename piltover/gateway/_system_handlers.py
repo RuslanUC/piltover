@@ -3,7 +3,8 @@ from __future__ import annotations
 from asyncio import get_running_loop
 from datetime import datetime, UTC
 from time import time
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable
 
 from loguru import logger
 

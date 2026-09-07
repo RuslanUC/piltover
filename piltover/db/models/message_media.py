@@ -105,7 +105,7 @@ class MessageMedia(Model):
         polls = [media.poll for media in medias if media.type is MediaType.POLL]
         poll_results = {
             poll.id: results
-            for poll, results in zip(polls, await models.Poll.to_tl_results_bulk(polls))
+            for poll, results in zip(polls, await models.Poll.to_tl_results_bulk(polls), strict=True)
         }
 
         tl = []

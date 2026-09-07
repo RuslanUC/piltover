@@ -731,9 +731,8 @@ async def edit_admin(request: EditAdmin, user_id: int) -> Updates:
     if target_peer.user_id == creator_id:
         new_admin_rights |= ChatAdminRights.from_tl(CREATOR_RIGHTS)
 
-    if user_id != creator_id:
-        if new_admin_rights & ~participant.admin_rights:
-            raise ErrorRpc(error_code=403, error_message="RIGHT_FORBIDDEN")
+    if user_id != creator_id and new_admin_rights & ~participant.admin_rights:
+        raise ErrorRpc(error_code=403, error_message="RIGHT_FORBIDDEN")
 
     if target_participant.admin_rights == new_admin_rights and target_participant.admin_rank == request.rank:
         return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
@@ -1042,7 +1041,6 @@ async def toggle_signatures(request: ToggleSignatures, user_id: int) -> Updates:
     if participant is None or not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
-    channel = channel
     if channel.signatures == request.signatures_enabled:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
 

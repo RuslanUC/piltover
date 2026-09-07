@@ -55,11 +55,11 @@ from piltover.worker import MessageHandler
 
 handler = MessageHandler("account")
 
-CANCEL_DELETION_FMT = FormatableTextWithEntities((
+CANCEL_DELETION_FMT = FormatableTextWithEntities(
     "❗ Your account was **scheduled for deletion** and **will be deleted on {date}**!\n\n"
     "To cancel account deletion, click this link and confirm your phone number: "
     "<a>t.me/confirmphone?phone={phone}&hash={hash}</a>."
-))
+)
 DELETION_CANCELLED_FMT, DELETION_CANCELLED_FMT_ENTITIES = FormatableTextWithEntities(
     "Deletion of your account **was cancelled**!"
 ).format()
@@ -171,7 +171,7 @@ async def register_device(request: RegisterDevice, user_id: int) -> bool:
     try:
         sess_id = int(request.token)
     except ValueError:
-        raise ErrorRpc(error_code=400, error_message="TOKEN_INVALID")
+        raise ErrorRpc(error_code=400, error_message="TOKEN_INVALID")  # noqa: B904
 
     key_id = request_ctx.get().auth_key_id
 
@@ -448,7 +448,7 @@ async def update_birthday(request: UpdateBirthday, user: User) -> bool:
     before = user.birthday
     after = None
     if request.birthday:
-        this_year = date.today().year
+        this_year = datetime.now(UTC).year
         age = this_year - (request.birthday.year if request.birthday.year else this_year)
         if request.birthday.year and (age < 0 or age > 150):
             raise ErrorRpc(error_code=400, error_message="BIRTHDAY_INVALID")
@@ -538,7 +538,7 @@ async def reset_password(user_id: int) -> ResetPasswordResult:
     if (password := await UserPassword.get_or_none(user_id=user_id).only("id")) is None:
         raise ErrorRpc(error_code=400, error_message="PASSWORD_EMPTY")
 
-    reset_request, created = await UserPasswordReset.get_or_create(user_id=user_id)
+    reset_request, _ = await UserPasswordReset.get_or_create(user_id=user_id)
     reset_date = reset_request.date + timedelta(seconds=APP_CONFIG.srp_password_reset_wait_seconds)
     if datetime.now(UTC) > reset_date:
         await password.delete()
@@ -563,7 +563,7 @@ async def _create_sent_code(
         if int(phone_number) < 100000:
             raise ValueError
     except ValueError:
-        raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
+        raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")  # noqa: B904
 
     if check_user_exists and await User.filter(phone_number=phone_number).exists():
         raise ErrorRpc(error_code=400, error_message="PHONE_NUMBER_OCCUPIED")

@@ -115,8 +115,6 @@ class DialogFolder(Model):
     async def _diff_update_peers(
             self, new_list: list[TLInputPeerBase], relation: fields.ManyToManyRelation[models.Peer],
     ) -> None:
-        peer: models.Peer
-
         new_peers = {peer.id: peer for peer in await self._fetch_peers(new_list)}
         if new_peers:
             current_peers = {peer.id: peer async for peer in relation.all()}

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Iterable, Any, Self
+from typing import TYPE_CHECKING, Any, Self, ClassVar
+from collections.abc import Callable, Iterable
 
 from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
 from piltover.db import models
-from piltover.db.enums import PeerType
+from piltover.db.models.peer import peer_is_self_or_user_min, peer_is_chat_min, peer_is_channel_min
 from piltover.tl.base import User as TLUserBase, Chat as TLChatBase
 from piltover.tl.to_format import MessageToFormat, ChannelMessageToFormat
 from piltover.tl.types import TLObject, Message, PeerChannel, PeerChat, PeerUser, MessageFwdHeader, \
@@ -68,12 +69,11 @@ class UsersChatsChannels:
         self._channel_ids.add(channel_id)
 
     def add_peer(self, peer: models.Peer) -> None:
-        peer_type = peer.type
-        if peer_type in (PeerType.SELF, PeerType.USER):
+        if peer_is_self_or_user_min(peer):
             self._user_ids.add(peer.user_id)
-        elif peer_type is PeerType.CHAT:
+        elif peer_is_chat_min(peer):
             self._chat_ids.add(peer.chat_id)
-        elif peer_type is PeerType.CHANNEL:
+        elif peer_is_channel_min(peer):
             self._channel_ids.add(peer.channel_id)
 
     def add_chat_invite(self, invite: models.ChatInvite) -> None:
@@ -245,7 +245,7 @@ class UsersChatsChannels:
         for obj in vec:
             self._visit_tl(obj)
 
-    _tl_visitors: dict[int, Callable[[Self, Any], None]] = {
+    _tl_visitors: ClassVar[dict[int, Callable[[Self, Any], None]]] = {
         Message.tlid(): _visit_tl_Message,
         PeerUser.tlid(): _visit_tl_PeerUser,
         PeerChat.tlid(): _visit_tl_PeerChat,

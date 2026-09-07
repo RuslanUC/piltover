@@ -59,8 +59,8 @@ async def get_config(user_id: int | None):
         push_chat_period_ms=1_000,  # Telegram default is 60000
         push_chat_limit=1,
         edit_time_limit=APP_CONFIG.edit_time_limit,  # Telegram default is 172800
-        revoke_time_limit=int(2 ** 31 - 1),
-        revoke_pm_time_limit=int(2 ** 31 - 1),
+        revoke_time_limit=2 ** 31 - 1,
+        revoke_pm_time_limit=2 ** 31 - 1,
         rating_e_decay=2,
         stickers_recent_limit=15,
         channels_read_media_period=24 * 60 * 60,

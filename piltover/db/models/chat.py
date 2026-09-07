@@ -107,19 +107,17 @@ class Chat(ChatBase):
 
         processing_chats = [
             chat
-            for chat, cached in zip(chats, cached_chats)
+            for chat, cached in zip(chats, cached_chats, strict=True)
             if cached is None and not chat.deleted
         ]
         chat_ids = [chat.id for chat in processing_chats]
 
         migrated_ids = [chat.id for chat in processing_chats if chat.migrated]
         if migrated_ids:
-            migrated_tos = {
-                migrated_from: migrated_to
-                for migrated_from, migrated_to in await models.Channel.filter(
-                    migrated_from_id__in=chat_ids,
-                ).values_list("migrated_from_id", "id")
-            }
+            migrated_tos = dict(cast(
+                list[tuple[int, int]],
+                await models.Channel.filter(migrated_from_id__in=chat_ids).values_list("migrated_from_id", "id")
+            ))
         else:
             migrated_tos = {}
 
@@ -141,7 +139,7 @@ class Chat(ChatBase):
 
         tl = []
         to_cache = []
-        for chat, cached in zip(chats, cached_chats):
+        for chat, cached in zip(chats, cached_chats, strict=True):
             if chat.deleted:
                 tl.append(ChatForbidden(
                     id=chat.make_id(),

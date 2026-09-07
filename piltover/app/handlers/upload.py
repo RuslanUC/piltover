@@ -191,7 +191,7 @@ async def get_file(request: GetFile, user_id: int) -> TLFile:
         suffix = str(size)
         component = storage.photos
 
-    with measure_time(f"storage.<component>.get_part()"):
+    with measure_time("storage.<component>.get_part()"):
         data = await component.get_part(file.physical_id, request.offset, request.limit, suffix)
     data = data or b""
 

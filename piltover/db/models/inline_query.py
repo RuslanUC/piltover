@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import ClassVar
 
 from tortoise import fields, Model
 
@@ -8,6 +9,7 @@ from piltover.db import models
 from piltover.db.enums import InlineQueryPeer
 from piltover.tl import InlineQueryPeerTypePM, InlineQueryPeerTypeBotPM, InlineQueryPeerTypeSameBotPM, \
     InlineQueryPeerTypeChat, InlineQueryPeerTypeBroadcast, InlineQueryPeerTypeMegagroup
+from piltover.tl.base import InlineQueryPeerType as InlineQueryPeerTypeBase
 
 
 class InlineQuery(Model):
@@ -27,7 +29,7 @@ class InlineQuery(Model):
             ("bot_id", "query", "offset"),
         )
 
-    INLINE_PEER_TO_TL = {
+    INLINE_PEER_TO_TL: ClassVar[dict[InlineQueryPeer, InlineQueryPeerTypeBase | None]] = {
         InlineQueryPeer.UNKNOWN: None,
         InlineQueryPeer.USER: InlineQueryPeerTypePM(),
         InlineQueryPeer.BOT: InlineQueryPeerTypeBotPM(),

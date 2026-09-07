@@ -27,11 +27,11 @@ handler = MessageHandler("messages.secret")
 
 
 def _check_g_a_or_b(g_a_or_b_bytes: bytes) -> bool:
-    dh_p, dh_g = gen_safe_prime()
+    dh_p, _ = gen_safe_prime()
     g_a_or_b = int.from_bytes(g_a_or_b_bytes, "big")
     if not (1 < g_a_or_b < dh_p - 1):
         return False
-    if not (2 ** (2048 - 64) < g_a_or_b < dh_p - 2 ** (2048 - 64)):
+    if not (2 ** (2048 - 64) < g_a_or_b < dh_p - 2 ** (2048 - 64)):# noqa: SIM103
         return False
     return True
 
@@ -118,9 +118,8 @@ async def discard_encryption(request: DiscardEncryption, user_id: int):
         if chat is None:
             raise ErrorRpc(error_code=400, error_message="ENCRYPTION_ID_INVALID")
 
-        if chat.to_user_id == user_id:
-            if chat.to_sess_id is not None and chat.to_sess_id != ctx.auth_id:
-                raise ErrorRpc(error_code=400, error_message="ENCRYPTION_ALREADY_ACCEPTED")
+        if chat.to_user_id == user_id and chat.to_sess_id is not None and chat.to_sess_id != ctx.auth_id:
+            raise ErrorRpc(error_code=400, error_message="ENCRYPTION_ALREADY_ACCEPTED")
         if chat.discarded:
             raise ErrorRpc(error_code=400, error_message="ENCRYPTION_ALREADY_DECLINED")
 

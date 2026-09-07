@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import uvloop
 from loguru import logger

@@ -3,7 +3,8 @@ from __future__ import annotations
 from inspect import getfullargspec
 from io import BytesIO
 from pathlib import Path
-from typing import Callable, Any, TypeVar, cast, Protocol, ParamSpec, Awaitable
+from typing import Any, TypeVar, cast, Protocol, ParamSpec
+from collections.abc import Callable, Awaitable
 
 from loguru import logger
 from taskiq import TaskiqEvents, AsyncTaskiqTask
@@ -243,7 +244,7 @@ class Worker(MessageHandler):
             reason = f", reason: {e.reason}" if e.reason is not None else ""
             logger.warning(f"{call.obj.tlname()}: [{e.error_code} {e.error_message}]{reason}")
             result = RpcError(error_code=e.error_code, error_message=e.error_message)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.opt(exception=e).warning(f"Error while processing {call.obj.tlname()}")
             result = RpcError(error_code=500, error_message="Server error")
         finally:
@@ -301,7 +302,7 @@ class Worker(MessageHandler):
             reason = f", reason: {e.reason}" if e.reason is not None else ""
             logger.warning(f"{call.obj.tlname()}: [{e.error_code} {e.error_message}]{reason}")
             result = RpcError(error_code=e.error_code, error_message=e.error_message)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.opt(exception=e).warning(f"Error while processing {call.obj.tlname()}")
             result = RpcError(error_code=500, error_message="Server error")
         finally:

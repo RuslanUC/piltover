@@ -6,6 +6,7 @@ from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import ChannelUpdateType
+from piltover.exceptions import Unreachable
 from piltover.tl import UpdateChannel, UpdateDeleteChannelMessages, UpdateEditChannelMessage, Long, \
     UpdateChannelAvailableMessages, UpdatePinnedChannelMessages
 from piltover.tl.base import Message as TLMessageBase
@@ -76,5 +77,5 @@ class ChannelUpdate(Model):
                     pts=self.pts,
                     pts_count=self.pts_count,
                 )
-
-        raise Unreachable
+            case _:
+                raise Unreachable

@@ -28,9 +28,9 @@ async def get_bot_selection_inline_keyboard(user_id: int, page: int) -> list[Key
     if has_prev_page or has_next_page:
         rows.append(KeyboardButtonRow(buttons=[]))
     if has_prev_page:
-        rows[-1].buttons.append(KeyboardButtonCallback(text=f"<-", data=f"mybots/page/{page - 1}".encode("latin1")))
+        rows[-1].buttons.append(KeyboardButtonCallback(text="<-", data=f"mybots/page/{page - 1}".encode("latin1")))
     if has_next_page:
-        rows[-1].buttons.append(KeyboardButtonCallback(text=f"->", data=f"mybots/page/{page + 1}".encode("latin1")))
+        rows[-1].buttons.append(KeyboardButtonCallback(text="->", data=f"mybots/page/{page + 1}".encode("latin1")))
 
     return rows
 

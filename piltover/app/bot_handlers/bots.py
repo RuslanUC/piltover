@@ -1,4 +1,4 @@
-from typing import Callable, Awaitable
+from collections.abc import Callable, Awaitable
 
 from piltover.app.bot_handlers.botfather import BotfatherBotInteractionHandler
 from piltover.app.bot_handlers.botfather.callback_handler import botfather_callback_query_handler

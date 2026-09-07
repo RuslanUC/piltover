@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Generator, Literal, AsyncIterator
+from typing import Any, Literal
+from collections.abc import Generator, AsyncIterator
 
 from pypika_tortoise.terms import Term
 from tortoise import BaseDBAsyncClient

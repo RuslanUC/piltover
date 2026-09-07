@@ -221,13 +221,11 @@ class ChatBase(Model):
         return self.check_rights(participant, ChatAdminRights.PIN_MESSAGES, ChatBannedRights.PIN_MESSAGES)
 
     def _check_can_send(self, participant: models.ChatParticipant | None) -> bool:
-        if not self.can_view_messages(participant):
-            return False
-        if isinstance(self, models.Chat) and participant is None:
-            return False
-        if isinstance(self, models.Channel) and participant is None and not self.join_to_send:
-            return False
-        return True
+        return not (
+                not self.can_view_messages(participant)
+                or (isinstance(self, models.Chat) and participant is None)
+                or (isinstance(self, models.Channel) and participant is None and not self.join_to_send)
+        )
 
     def can_send_messages(self, participant: models.ChatParticipant | None) -> bool:
         if not self._check_can_send(participant):

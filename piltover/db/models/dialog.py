@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import cast, Iterable, Self
+from typing import cast, Self
+from collections.abc import Iterable
 
 from loguru import logger
 from pypika_tortoise import Dialects, Parameter
@@ -244,7 +245,7 @@ class Dialog(DialogBase):
         }
 
         tl = []
-        for dialog, read_state in zip(dialogs, read_states):
+        for dialog, read_state in zip(dialogs, read_states, strict=True):
             top_message = 0
             peer_id = dialog.peer_id
             if peer_id in messages and (peer_message := messages[peer_id][1]) is not None:

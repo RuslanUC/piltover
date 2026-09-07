@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Callable, Awaitable, Generic, TypeVar, Optional, Self, Protocol
+from typing import Generic, TypeVar, Self, Protocol
+from collections.abc import Callable, Awaitable
 
 from piltover.db.models import Peer, MessageRef
 from piltover.db.models.bot_state_base import BotUserStateBase, StateEnumT
@@ -34,13 +35,13 @@ class FuncHandler(HandlerBase):
 class SimpleHandler(HandlerBase[StateEnumT, StateT]):
     def __init__(
             self,
-            set_state: Optional[StateEnumT],
+            set_state: StateEnumT | None,
             text: str | None,
             entities: Entities | None,
             send_message: SendMessageFunc | None,
             del_state: bool,
     ) -> None:
-        self._set_state: Optional[StateEnumT] = set_state
+        self._set_state = set_state
         self._respond_text = text
         self._respond_entities = entities
         self._send_message = send_message
@@ -55,9 +56,9 @@ class SimpleHandler(HandlerBase[StateEnumT, StateT]):
 
 class PendingHandler:
     def __init__(self) -> None:
-        self.state: Optional[StateEnumT] = None
+        self.state: StateEnumT | None = None
         self.func: HandlerFunc | None = None
-        self.set_state: Optional[StateEnumT] = None
+        self.set_state: StateEnumT | None = None
         self.del_state: bool = False
         self.respond_text: str | None = None
         self.respond_entities: Entities | None = None
@@ -114,7 +115,7 @@ class RegisterInteraction(Generic[StateEnumT, StateT]):
         reg._send_message_func = func
         return reg
 
-    def when(self, *, state: Optional[StateEnumT] = None) -> Self:
+    def when(self, *, state: StateEnumT | None = None) -> Self:
         reg = self._clone()
         reg._pending = PendingHandler()
         reg._pending.state = state
@@ -197,9 +198,9 @@ class RegisterCommand(RegisterInteraction[StateEnumT, StateT]):
 class BotInteractionHandler(Generic[StateEnumT, StateT]):
     def __init__(self, state_cls: type[StateT] | None) -> None:
         self.state_cls = state_cls
-        self._commands_registry: dict[tuple[str, Optional[StateEnumT]], HandlerBase[StateEnumT, StateT]] = {}
+        self._commands_registry: dict[tuple[str, StateEnumT | None], HandlerBase[StateEnumT, StateT]] = {}
         self._command_fetch_state: dict[str, bool] = {}
-        self._text_registry: dict[Optional[StateEnumT], HandlerBase[StateEnumT, StateT]] = {}
+        self._text_registry: dict[StateEnumT | None, HandlerBase[StateEnumT, StateT]] = {}
 
     def register(self, reg: RegisterInteraction[StateEnumT, StateT]) -> None:
         if isinstance(reg, RegisterCommand):

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from time import time
-from typing import cast, Collection
+from typing import cast
+from collections.abc import Collection
 
 from tortoise import fields, Model
 from tortoise.transactions import in_transaction
@@ -60,7 +61,7 @@ class State(Model):
                 for state in await cls.select_for_update().filter(user_id__in=user_ids).only("id", "user_id", "pts")
             }
 
-            for user_id, pts_count in zip(user_ids, pts_counts):
+            for user_id, pts_count in zip(user_ids, pts_counts, strict=True):
                 if pts_count <= 0:
                     continue
                 state = state_by_user_id[user_id]

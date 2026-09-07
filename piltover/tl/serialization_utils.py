@@ -49,7 +49,7 @@ class SerializationUtils:
         elif isinstance(value, list) and not isinstance(value, primitives.Vector):
             if not value:
                 return primitives.EMPTY_VECTOR
-            raise TypeError(f"Writing raw lists is not supported. Use primitives.Vector* types.")
+            raise TypeError("Writing raw lists is not supported. Use primitives.Vector* types.")
         elif isinstance(value, primitives.Vector):
             if isinstance(value, primitives.TLObjectVector):
                 return value.write(ctx)
@@ -76,7 +76,7 @@ class SerializationUtils:
         elif issubclass(type_, TLObject):
             return TLObject.read(stream)
         elif issubclass(type_, list) and not issubclass(type_, primitives.Vector):
-            raise TypeError(f"Reading raw lists is not supported. Use primitives.Vector* types.")
+            raise TypeError("Reading raw lists is not supported. Use primitives.Vector* types.")
         elif issubclass(type_, primitives.Vector):
             return type_.read(stream)
         else:

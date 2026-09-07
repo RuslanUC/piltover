@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
-from typing import Iterable, Callable, Any
+from typing import Any
+from collections.abc import Iterable, Callable
 
 from loguru import logger
 from tortoise.queryset import BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, ValuesListQuery, \

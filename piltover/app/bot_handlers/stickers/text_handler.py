@@ -813,9 +813,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
         type_ = message.content.message.strip()
         if type_ == "Static emoji":
             pack_type = EmojiPackTypeStatic()
-        elif type_ == "Video emoji":
-            return await send_bot_message(peer, _newemojipack_type_not_supported, EMOJI_PACK_TYPES_KEYBOARD)
-        elif type_ == "Animated emoji":
+        elif type_ in ("Video emoji", "Animated emoji"):
             return await send_bot_message(peer, _newemojipack_type_not_supported, EMOJI_PACK_TYPES_KEYBOARD)
         else:
             return await send_bot_message(peer, _newemojipack_invalid_type, EMOJI_PACK_TYPES_KEYBOARD)

@@ -696,7 +696,7 @@ async def get_messages_views(request: GetMessagesViews, user_id: int) -> Message
                 await MessageContent.fetch_for_list(contents_to_refresh, "post_info")
 
     replies = await MessageRef.to_tl_replies_bulk(refs)
-    replies_by_id = {ref.id: reply for ref, reply in zip(refs, replies)}
+    replies_by_id = {ref.id: reply for ref, reply in zip(refs, replies, strict=True)}
 
     views = []
 
@@ -894,7 +894,8 @@ async def read_message_contents_internal(user_id: int, valid_refs: list[MessageR
             unread_target_ids.add(Channel.make_id_from(peer_.channel_id))
 
     if len(unread_target_ids) == 1:
-        mention = await MessageMention.get_or_none(user_id=user_id, unread_target_id=list(unread_target_ids)[0])
+        unread_target_id = next(iter(unread_target_ids))
+        mention = await MessageMention.get_or_none(user_id=user_id, unread_target_id=unread_target_id)
         mentions = [mention] if mention is not None else []
     elif unread_target_ids:
         mentions = await MessageMention.filter(user_id=user_id, unread_target_id__in=unread_target_ids)
@@ -1010,11 +1011,12 @@ async def set_history_ttl(request: SetHistoryTTL, user_id: int) -> Updates:
         await Peer.bulk_update([peer, opp_peer], fields=["user_ttl_period_days"])
     elif peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         participant = await peer.chat_or_channel.get_participant(user_id)
-        if peer.type is PeerType.CHAT \
-                and (participant is None or not (participant.is_admin or peer.chat.creator_id == user_id)):
+        if participant is None:
+            raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+        if peer.type is PeerType.CHAT and not (participant.is_admin or peer.chat.creator_id == user_id):  # noqa: SIM114
             raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
         elif peer.type is PeerType.CHANNEL \
-                and (participant is None or not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO)):
+                and not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
             raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
         old_value = peer.chat_or_channel.ttl_period_days

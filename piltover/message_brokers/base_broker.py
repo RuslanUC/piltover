@@ -4,7 +4,8 @@ import asyncio
 from abc import abstractmethod, ABC
 from copy import deepcopy
 from enum import Flag
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING
+from collections.abc import Iterable
 
 from loguru import logger
 
@@ -225,7 +226,7 @@ class BaseMessageBroker(ABC):
                     await session.enqueue(deepcopy(message.obj), False)
                 else:
                     await session.enqueue(message.obj, False)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.opt(exception=e).error("Error occurred while sending message")
 
     async def _process_channels_subscribe(self, message: ChannelSubscribe) -> None:
@@ -271,7 +272,7 @@ class BaseMessageBroker(ABC):
         for session in send_to:
             try:
                 await session.enqueue(to_send, False)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.opt(exception=e).error("Error occurred while sending internal push")
 
     async def _process_message(self, message: MessageInternal) -> None:

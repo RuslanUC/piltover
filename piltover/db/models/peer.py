@@ -58,7 +58,7 @@ def peer_is_user_min(peer: PeerProtocolMin) -> TypeGuard[PeerProtocolMinUserT]:
     return peer.owner_id is not None and peer.user_id is not None and peer.owner_id != peer.user_id
 
 
-def peer_is_self_or_user_min(peer: PeerProtocolMin) -> TypeGuard[PeerProtocolMinChatT]:
+def peer_is_self_or_user_min(peer: PeerProtocolMin) -> TypeGuard[PeerProtocolMinUserT]:
     return peer.owner_id is not None and peer.user_id is not None
 
 
@@ -92,7 +92,9 @@ PeerProtocolFullSelfT: TypeAlias = PeerProtocolFull["models.User", None, None, i
 PeerProtocolFullUserT: TypeAlias = PeerProtocolFull["models.User", None, None, int, int, None, None]
 PeerProtocolFullChatT: TypeAlias = PeerProtocolFull[None, "models.Chat", None, int, None, int, None]
 PeerProtocolFullChannelT: TypeAlias = PeerProtocolFull[None, None, "models.Channel", None, None, None, int]
-PeerProtocolFullOwnedT: TypeAlias = PeerProtocolFull["models.User | None", "models.Chat | None", "models.Channel | None", int, int | None, int | None, int | None]  # noqa: E501
+PeerProtocolFullOwnedT: TypeAlias = PeerProtocolFull[
+    "models.User | None", "models.Chat | None", "models.Channel | None", int, int | None, int | None, int | None
+]
 
 
 def peer_is_self(peer: PeerProtocolFull) -> TypeGuard[PeerProtocolFullSelfT]:
@@ -340,7 +342,7 @@ class Peer(Model):
         if self.type is PeerType.USER:
             if self.user_id == 777000:
                 return []
-            peer, created = await Peer.get_or_create(
+            peer, _ = await Peer.get_or_create(
                 owner_id=self.user_id, user_id=self.owner_id, defaults={"type": PeerType.USER},
             )
             if peer.blocked_at is not None and not allow_blocked:
@@ -402,9 +404,9 @@ class Peer(Model):
 
     def __repr__(self) -> str:
         obj_fields = [f"type={self.type!r}"]
-        if (peer_id := getattr(self, "id")) is not None:
+        if (peer_id := getattr(self, "id", None)) is not None:
             obj_fields.append(f"id={peer_id!r}")
-        if (owner_id := getattr(self, "owner_id")) is not None:
+        if (owner_id := getattr(self, "owner_id", None)) is not None:
             obj_fields.append(f"owner_id={owner_id!r}")
 
         if peer_is_self_or_user(self):

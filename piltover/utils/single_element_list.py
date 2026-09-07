@@ -1,5 +1,6 @@
 from collections.abc import Sequence
-from typing import overload, TypeVar, NoReturn, Iterator, Generic, Any
+from typing import overload, TypeVar, NoReturn, Generic, Any
+from collections.abc import Iterator
 
 _T_co = TypeVar("_T_co", covariant=True)
 

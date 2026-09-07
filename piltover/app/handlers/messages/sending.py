@@ -2,7 +2,8 @@ from array import array
 from collections import defaultdict
 from datetime import datetime, UTC, timedelta
 from time import time
-from typing import cast, Sequence
+from typing import cast
+from collections.abc import Sequence
 from uuid import UUID
 
 from fastrand import xorshift128plusrandint
@@ -191,9 +192,8 @@ async def send_message_internal(
 
     if opposite and reply_to_message_id and peer_is_channel(peer_):
         participant = await peer_.channel.get_participant(user.id)
-        if (channel_min_id := peer_.channel.min_id(participant)) is not None:
-            if channel_min_id >= reply_to_message_id:
-                reply_to_message_id = None
+        if (channel_min_id := peer_.channel.min_id(participant)) is not None and channel_min_id >= reply_to_message_id:
+            reply_to_message_id = None
 
     reply_to = None
     reply_to_top = None
@@ -425,11 +425,10 @@ def _make_supergroup_anonymous_maybe(peer: Peer, participant: ChatParticipant | 
 
 
 def _resolve_noforwards(peer: Peer, user: User | None, request_noforwards: bool = False) -> bool:
-    if peer.type in (PeerType.CHAT, PeerType.CHANNEL) and peer.chat_or_channel.no_forwards:
-        return True
-    if user is not None and user.bot and request_noforwards:
-        return True
-    return False
+    return (
+            (peer.type in (PeerType.CHAT, PeerType.CHANNEL) and peer.chat_or_channel.no_forwards)
+            or (user is not None and user.bot and request_noforwards)
+    )
 
 
 async def _check_bot_blocked(user: User, peer: Peer) -> None:
@@ -704,7 +703,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         raise ErrorRpc(error_code=400, error_message="MESSAGE_EMPTY")
     elif content.media_id is None and new_has_media:
         raise ErrorRpc(error_code=400, error_message="MEDIA_PREV_INVALID")
-    elif content.media_id is not None and new_has_media and not isinstance(request.media, DocOrPhotoMedia):
+    elif content.media_id is not None and new_has_media and not isinstance(request.media, DocOrPhotoMedia): # noqa: SIM114
         raise ErrorRpc(error_code=400, error_message="MEDIA_NEW_INVALID")
     elif content.media_id is not None and request.media \
             and content.media is not None and content.media.type not in (MediaType.DOCUMENT, MediaType.PHOTO):
@@ -804,7 +803,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         return await upd.edit_message_channel(peer.channel, messages[got_peer])
 
     if not user.bot:
-        peers = [message_peer for message_peer in messages.keys() if message_peer != peer]
+        peers = [message_peer for message_peer in messages if message_peer != peer]
         presence = await Presence.update_to_now(user)
         await upd.update_status(user, presence, peers)
 
@@ -1189,7 +1188,7 @@ async def save_draft(request: SaveDraft, user_id: int) -> bool:
         peer=peer,
         defaults={
             "message": request.message,
-            "date": datetime.now(),
+            "date": datetime.now(UTC),
             "reply_to": reply_to,
             "no_webpage": request.no_webpage,
             "invert_media": request.invert_media if isinstance(request, (SaveDraft, SaveDraft_166)) else False,
@@ -1257,8 +1256,8 @@ async def forward_messages(
         raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
     ids = request.id[:100]
-    random_ids = dict(zip(ids, random_id))
-    id_by_random_id = dict(zip(random_id, ids))
+    random_ids = dict(zip(ids, random_id, strict=True))
+    id_by_random_id = dict(zip(random_id, ids, strict=True))
     existing_by_random_id = await MessageRef.filter(
         peer=to_peer, random_user=user, random_id__in=random_id,
     ).select_related(*MessageRef.PREFETCH_MAYBECACHED)
@@ -1345,7 +1344,7 @@ async def forward_messages(
         can_see_reactions_list=to_peer.can_see_reactions_list(),
     )
 
-    old_ids_to_new_ids = {old.content_id: new.id for old, new in zip(messages, forwarded_contents)}
+    old_ids_to_new_ids = {old.content_id: new.id for old, new in zip(messages, forwarded_contents, strict=True)}
     reply_to_content_ids = [
         old_ids_to_new_ids.get(old.reply_to.content_id) if old.reply_to is not None else None
         for old in messages
@@ -1502,10 +1501,11 @@ async def send_multi_media(
         media = medias_by_file_id[media_id.id]
         file = cast(File, media.file)
         _, const = File.is_file_ref_valid(media_id.file_reference, user_id, media_id.id)
-        if const:
-            if media_id.access_hash != file.constant_access_hash \
-                    or UUID(bytes=media_id.file_reference[12:]) != file.constant_file_ref:
-                raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
+        if const and (
+                media_id.access_hash != file.constant_access_hash
+                or UUID(bytes=media_id.file_reference[12:]) != file.constant_file_ref
+        ):
+            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
         random_ids.append(single_media.random_id)
         messages.append((
@@ -1538,7 +1538,7 @@ async def send_multi_media(
 
     updates = None
     # TODO: send messages in bulk, not in a loop
-    for idx, ((message, random_id, media, entities), post_info) in enumerate(zip(messages, post_infos)):
+    for (message, random_id, media, entities), post_info in zip(messages, post_infos, strict=True):
         new_updates = await send_message_internal(
             user, peer, random_id, reply_to_message_id, request.clear_draft,
             scheduled_date=request.schedule_date,

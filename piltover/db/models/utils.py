@@ -19,8 +19,8 @@ class IntFlagFieldInstance(tortoise.fields.BigIntField):
         for item in enum_type:
             try:
                 int(cast(int | str, item.value))
-            except ValueError:
-                raise tortoise.ConfigurationError("IntFlagField only supports integer enums!")
+            except ValueError as e:
+                raise tortoise.ConfigurationError("IntFlagField only supports integer enums!") from e
 
         if "description" not in kwargs:
             kwargs["description"] = "\n".join([f"{e.name}: {e.value}" for e in enum_type])[:2048]

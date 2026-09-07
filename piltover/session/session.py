@@ -400,7 +400,7 @@ class Session:
             )
             mentioned_media_unreads = await MessageRef.get_mentioned_media_unread_bulk(messages, user_id)
             reactionss = await MessageRef.to_tl_reactions_bulk(messages, user_id)
-            for message, mmu, reactions in zip(messages, mentioned_media_unreads, reactionss):
+            for message, mmu, reactions in zip(messages, mentioned_media_unreads, reactionss, strict=True):
                 result.channel_messages[message.id] = (reactions, mmu[0], mmu[1])
 
         return result
@@ -413,23 +413,23 @@ class Session:
 
         if packet.message_id % 4 != 0:
             # 18: incorrect two lower order msg_id bits (the server expects client message msg_id to be divisible by 4)
-            logger.debug(f"Client sent message id which is not divisible by 4")
+            logger.debug("Client sent message id which is not divisible by 4")
             error_code = 18
         elif (packet.message_id >> 32) < (time() - 300):
             # 16: msg_id too low
-            logger.debug(f"Client sent message id which is too low")
+            logger.debug("Client sent message id which is too low")
             error_code = 16
         elif (packet.message_id >> 32) > (time() + 30):
             # 17: msg_id too high
-            logger.debug(f"Client sent message id which is too low")
+            logger.debug("Client sent message id which is too low")
             error_code = 17
         elif (packet.seq_no & 1) == 1 and is_id_strictly_not_content_related(inner_id):
             # 34: an even msg_seqno expected (irrelevant message), but odd received
-            logger.debug(f"Client sent odd seq_no for content-related message ({hex(inner_id)[2:]})")
+            logger.debug("Client sent odd seq_no for content-related message ({tlid})", tlid=hex(inner_id)[2:])
             error_code = 34
         elif (packet.seq_no & 1) == 0 and is_id_strictly_content_related(inner_id):
             # 35: odd msg_seqno expected (relevant message), but even received
-            logger.debug(f"Client sent even seq_no for not content-related message ({hex(inner_id)[2:]})")
+            logger.debug("Client sent even seq_no for not content-related message ({tlid})", tlid=hex(inner_id)[2:])
             error_code = 35
 
         # TODO: add validation for message_id duplication (code 19)

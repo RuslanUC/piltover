@@ -79,7 +79,7 @@ async def export_chat_invite(request: ExportChatInvite, user_id: int) -> ChatInv
     if participant is None:
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
     if isinstance(chat_or_channel, Chat) \
-            and not chat_or_channel.user_has_permission(participant, ChatBannedRights.INVITE_USERS):
+            and not chat_or_channel.user_has_permission(participant, ChatBannedRights.INVITE_USERS):  # noqa: SIM114
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
     elif isinstance(chat_or_channel, Channel) \
             and not chat_or_channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):

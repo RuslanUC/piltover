@@ -224,6 +224,6 @@ async def send_telegram_message(request: SendTelegramMessage) -> TLObject:
                 text=request.text,
             )
         except TelegramAPIError as e:
-            logger.opt(exception=e).error(f"Failed to send telegram message")
+            logger.opt(exception=e).error("Failed to send telegram message")
 
     return TaggedBool(value=True)

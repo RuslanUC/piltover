@@ -31,12 +31,12 @@ from piltover.worker import MessageHandler
 
 handler = MessageHandler("auth")
 
-LOGIN_MESSAGE_FMT = FormatableTextWithEntities((
-    f"**Login code**: ||{{code}}||. "
+LOGIN_MESSAGE_FMT = FormatableTextWithEntities(
+    "**Login code**: ||{code}||. "
     f"Do not give this code to anyone, even if they say they are from {APP_CONFIG.name}!\n\n"
     f"❗️This code can be used to log in to your {APP_CONFIG.name} account. We never ask it for anything else.\n\n"
     "If you didn't request this code by trying to log in on another device, simply ignore this message."
-))
+)
 LOGIN_MESSAGE_FMT_HTML = (
     f"<b>Login code</b>: <tg-spoiler>{{code}}</tg-spoiler>. "
     f"Do not give this code to anyone!\n\n"
@@ -52,7 +52,7 @@ def _validate_phone(phone_number: str) -> str:
         if int(phone_number) < 100000:
             raise ValueError
     except ValueError:
-        raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
+        raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")  # noqa: B904
 
     if len(phone_number) > 16:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
@@ -122,7 +122,7 @@ async def sign_in(request: SignIn) -> AuthAuthorization | AuthorizationSignUpReq
     try:
         int(request.phone_code)
     except ValueError:
-        raise ErrorRpc(error_code=406, error_message="PHONE_CODE_INVALID", reason="Invalid phone code")
+        raise ErrorRpc(error_code=406, error_message="PHONE_CODE_INVALID", reason="Invalid phone code")  # noqa: B904
 
     code = await SentCode.get_(phone_number, request.phone_code_hash, PhoneCodePurpose.SIGNIN)
     if code := await SentCode.check_raise_cls(code, request.phone_code):
@@ -225,7 +225,7 @@ async def bind_temp_auth_key(request: BindTempAuthKey):
 
     try:
         if perm_auth_key is None:
-            raise Exception
+            raise ValueError("Permanent auth key is None")
 
         message = encrypted_message.decrypt(perm_auth_key, ConnectionRole.CLIENT, True)
         sec_check(message.seq_no == 0)
@@ -237,9 +237,9 @@ async def bind_temp_auth_key(request: BindTempAuthKey):
         sec_check(obj.nonce == request.nonce, msg=f"{obj.nonce} != {request.nonce}")
         sec_check(obj.temp_session_id == ctx.session_id, msg=f"{obj.temp_session_id} != {ctx.session_id}")
         sec_check(obj.temp_auth_key_id == ctx.auth_key_id, msg=f"{obj.temp_auth_key_id} != {ctx.auth_key_id}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.opt(exception=e).debug("Failed to decrypt inner message")
-        raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")
+        raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")  # noqa: B904
 
     await TempAuthKey.filter(perm_key_id=encrypted_message.auth_key_id, id__not=obj.temp_auth_key_id).delete()
     await TempAuthKey.filter(id=obj.temp_auth_key_id).update(perm_key_id=encrypted_message.auth_key_id)

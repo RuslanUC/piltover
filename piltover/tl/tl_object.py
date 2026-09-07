@@ -4,7 +4,7 @@ from abc import abstractmethod, ABC
 from io import BytesIO
 from typing import Generic, TypeVar, Self, TYPE_CHECKING
 
-import piltover.tl as tl
+from piltover import tl
 from piltover.exceptions import Error, InvalidConstructorException, UnknownConstructorException
 from .primitives import Int
 from .serialization_context import SerializationContext, EMPTY_SERIALIZATION_CONTEXT
@@ -33,7 +33,7 @@ class TLObject(ABC):
     @abstractmethod
     def deserialize(cls, stream: BytesIO) -> Self: ...
 
-    def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:
+    def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:  # noqa: B027
         ...
 
     @classmethod

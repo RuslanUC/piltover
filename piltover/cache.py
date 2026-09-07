@@ -1,5 +1,5 @@
 from io import BytesIO
-from typing import Literal
+from typing import Literal, ClassVar
 
 from aiocache import BaseCache
 from aiocache.serializers import BaseSerializer
@@ -10,18 +10,18 @@ from piltover.tl.serialization_utils import SerializationUtils
 
 
 class TLSerializer(BaseSerializer):
-    _TYPES = [
+    _TYPES: ClassVar[list[type]] = [
         TLObject, Int, Long, Int128, Int256, float, bool, bytes, str,
         IntVector, LongVector, FloatVector, Int128Vector, Int256Vector, BoolVector, BytesVector, StringVector,
         TLObjectVector,
     ]
-    _TYPES_TO_INT = {typ: idx for idx, typ in enumerate(_TYPES)}
+    _TYPES_TO_INT: ClassVar[dict[type, int]] = {typ: idx for idx, typ in enumerate(_TYPES)}
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.encoding = None
 
-    def dumps(self, value: TLObject | int | str | bytes | bool | float | None) -> bytes:
+    def dumps(self, value: TLObject | str | bytes | bool | float | None) -> bytes:
         ser_type = bytes([0 if isinstance(value, TLObject) else self._TYPES_TO_INT[type(value)]])
         return ser_type + SerializationUtils.write(value)
 

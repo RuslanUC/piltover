@@ -105,7 +105,7 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user_id: int) -
             answer = BotCallbackAnswer.read(BytesIO(result))
         except InvalidConstructorException as e:
             logger.opt(exception=e).warning("Failed to read bot callback answer")
-            raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
+            raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")  # noqa: B904
 
         return answer
 
@@ -234,7 +234,7 @@ async def get_inline_bot_results(request: GetInlineBotResults, user_id: int) -> 
             results = BotResults.read(BytesIO(inline_result))
         except InvalidConstructorException as e:
             logger.opt(exception=e).warning("Failed to read bot inline answer")
-            raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
+            raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")  # noqa: B904
 
         return results
 

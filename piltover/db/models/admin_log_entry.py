@@ -42,15 +42,13 @@ def _add_participant_to_ucc(participant: ChannelParticipantBase, ucc: UsersChats
     else:
         raise Unreachable
 
-    if isinstance(participant, ChannelParticipantBanned):
-        if participant.kicked_by:
-            ucc.add_user(participant.kicked_by)
-    elif isinstance(participant, ChannelParticipantAdmin):
-        if participant.promoted_by:
-            ucc.add_user(participant.promoted_by)
-    elif isinstance(participant, (ChannelParticipantSelf, ChannelParticipantSelf_133, ChannelParticipantSelf_134)):
-        if participant.inviter_id:
-            ucc.add_user(participant.inviter_id)
+    if isinstance(participant, ChannelParticipantBanned) and participant.kicked_by:
+        ucc.add_user(participant.kicked_by)
+    elif isinstance(participant, ChannelParticipantAdmin) and participant.promoted_by:
+        ucc.add_user(participant.promoted_by)
+    elif isinstance(participant, (ChannelParticipantSelf, ChannelParticipantSelf_133, ChannelParticipantSelf_134)) \
+            and participant.inviter_id:
+        ucc.add_user(participant.inviter_id)
 
 
 def _process_channel_participant(

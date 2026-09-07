@@ -3,7 +3,8 @@ from __future__ import annotations
 from abc import abstractmethod, ABC
 from array import array
 from io import BytesIO
-from typing import Literal, cast, TypeVar, TYPE_CHECKING, Protocol, Iterable
+from typing import Literal, cast, TypeVar, TYPE_CHECKING, Protocol
+from collections.abc import Iterable
 
 from piltover.exceptions import InvalidConstructorException
 from piltover.tl import primitives
