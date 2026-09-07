@@ -49,23 +49,26 @@ async def delete_saved_history(request: DeleteSavedHistory, user_id: int) -> Aff
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
     query = Q(peer__owner_id=user_id, peer__user_id=user_id, content__fwd_header__saved_peer=peer)
     if request.max_id:
-        query &= Q(id__lte=request.max_id)
+        query &= Q(local_id__lte=request.max_id)
     if request.max_date:
         query &= Q(content__date__lt=datetime.fromtimestamp(request.max_date, UTC))
     if request.min_date:
         query &= Q(content__date__gt=datetime.fromtimestamp(request.min_date, UTC))
 
-    ids = cast(list[int], await MessageRef.filter(query).order_by("-id").limit(1001).values_list("id", flat=True))
+    ids = cast(
+        list[tuple[int, int]],
+        await MessageRef.filter(query).order_by("-id").limit(1001).values_list("id", "local_id")
+    )
     if not ids:
         updates_state = await State.get(user_id=user_id)
         return AffectedHistory(pts=updates_state.pts, pts_count=0, offset=0)
 
     offset = 0
     if len(ids) > 1000:
-        offset = ids.pop()
+        offset = ids.pop()[1]
 
-    await MessageRef.filter(id__in=ids).delete()
-    pts = await upd.delete_messages(user_id, {user_id: ids})
+    await MessageRef.filter(id__in=[msg_id[0] for msg_id in ids]).delete()
+    pts = await upd.delete_messages(user_id, {user_id: [msg_id[1] for msg_id in ids]})
 
     return AffectedHistory(pts=pts, pts_count=len(ids), offset=offset)
 

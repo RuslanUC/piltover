@@ -58,7 +58,7 @@ async def get_scheduled_messages(request: GetScheduledMessages, user_id: int) ->
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
     messages = await MessageRef.filter(
-        peer=peer, scheduled_by_user_id=user_id, id__in=request.id,
+        peer=peer, scheduled_by_user_id=user_id, local_id__in=request.id,
     ).order_by("content__scheduled_date").select_related(*MessageRef.PREFETCH_MAYBECACHED)
 
     return await _format_messages(user_id, messages)
@@ -96,8 +96,8 @@ async def send_scheduled_messages(request: SendScheduledMessages, user_id: int) 
             updates.users.extend(msg_updates.users)
             updates.date = msg_updates.date
 
-            new.append(messages[0].id)
-            deleted.append(scheduled.id)
+            new.append(messages[0].local_id)
+            deleted.append(scheduled.local_id)
 
     if deleted and new:
         delete_updates = await upd.delete_scheduled_messages(user_id, peer, deleted, new)
@@ -110,15 +110,15 @@ async def send_scheduled_messages(request: SendScheduledMessages, user_id: int) 
 async def delete_scheduled_messages(request: DeleteScheduledMessages, user_id: int) -> Updates:
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
     messages = await MessageRef.filter(
-        peer=peer, id__in=request.id, scheduled_by_user_id=user_id,
-    ).values_list("id", "content_id")
+        peer=peer, local_id__in=request.id, scheduled_by_user_id=user_id,
+    ).values_list("local_id", "content_id")
 
-    ids = []
+    local_ids = []
     content_ids = []
-    for ref_id, content_id in messages:
-        ids.append(ref_id)
+    for ref_local_id, content_id in messages:
+        local_ids.append(ref_local_id)
         content_ids.append(content_id)
 
     await MessageContent.filter(id__in=content_ids).delete()
 
-    return await upd.delete_scheduled_messages(user_id, peer, ids)
+    return await upd.delete_scheduled_messages(user_id, peer, local_ids)

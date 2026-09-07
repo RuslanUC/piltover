@@ -24,7 +24,7 @@ _UNREAD_COUNTS_SQL = """
 SELECT
     dialog.id dialog_id, COUNT(mref.id) count
 FROM dialog
-    JOIN messageref mref on dialog.peer_id = mref.peer_id and mref.id > dialog.last_read_message_id and mref.scheduled_by_user_id is null
+    JOIN messageref mref on dialog.peer_id = mref.peer_id and mref.local_id > dialog.last_read_message_id and mref.scheduled_by_user_id is null
 WHERE dialog.id {state_condition}
 GROUP BY dialog_id
 ;
@@ -53,7 +53,11 @@ class Dialog(DialogBase):
             return models.MessageRef.filter(id=0)
 
         return models.MessageRef.filter(
-            id__in=[dialog.peer.last_message_id for dialog in dialogs if dialog.peer.last_message_id is not None]
+            id__in=[
+                dialog.peer.last_message_id
+                for dialog in dialogs
+                if dialog.peer.last_message_id is not None
+            ]
         ).select_related(
             *(models.MessageRef.PREFETCH_MAYBECACHED if prefetch else ()),
         )
@@ -155,7 +159,7 @@ class Dialog(DialogBase):
             peer = peer_or_dialog
             dialog = await cls.get_or_create_hidden(user_id, peer_or_dialog)
 
-        unread_count = await models.MessageRef.filter(peer=peer, id__gt=dialog.last_read_message_id).count()
+        unread_count = await models.MessageRef.filter(peer=peer, local_id__gt=dialog.last_read_message_id).count()
         if no_reactions:
             unread_reactions_count = 0
         else:
@@ -195,7 +199,7 @@ class Dialog(DialogBase):
 
         top_message_id = await models.MessageRef.filter(
             peer_id=self.peer_id
-        ).order_by("-id").first().values_list("id", flat=True)
+        ).order_by("-id").first().values_list("local_id", flat=True)
         draft = await models.MessageDraft.get_or_none(user_id=self.owner_id, peer_id=self.peer_id)
         draft = draft.to_tl() if draft else None
 

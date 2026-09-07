@@ -324,7 +324,7 @@ async def get_message_reactions_list(request: GetMessageReactionsList, user_id: 
     if not can_see_list:
         raise ErrorRpc(error_code=400, error_message="BROADCAST_FORBIDDEN")
 
-    message_query = Q(id=request.id, peer=peer, content__type=MessageType.REGULAR)
+    message_query = Q(local_id=request.id, peer=peer, content__type=MessageType.REGULAR)
     message_query = append_channel_min_message_id_to_query_maybe(peer, message_query)
     message = await MessageRef.get_or_none(message_query).only("content_id", "reactions_unread_author_id")
     if message is None:

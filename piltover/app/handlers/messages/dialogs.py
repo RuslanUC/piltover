@@ -176,9 +176,9 @@ async def get_dialogs_internal(
                 raise Unreachable
             if offset_peer_type is not PeerType.CHANNEL:
                 offset_peer_query = offset_peer_query.filter(owner_id=user_id)
-            offset_peer_ = await offset_peer_query.get_or_none().only("id", "last_message_id")
+            offset_peer_ = await offset_peer_query.get_or_none().only("id", "last_message_local_id")
             if offset_peer_ is not None:
-                peer_message_id = offset_peer_.last_message_id
+                peer_message_id = offset_peer_.last_message_local_id
 
         if peer_message_id is None:
             offset_id = 0
@@ -188,7 +188,7 @@ async def get_dialogs_internal(
             offset_id = peer_message_id
 
     if offset_id:
-        query &= Q(peer__last_message_id__lt=offset_id)
+        query &= Q(peer__last_message_local_id__lt=offset_id)
     if exclude_pinned:
         query &= Q(pinned_index__isnull=True)
     if offset_date:
@@ -201,7 +201,7 @@ async def get_dialogs_internal(
     # TODO: order_by probably should be -peer__last_message_date, -peer_id
     dialogs: list[DialogT] = await model.filter(
         query
-    ).limit(limit).order_by("-peer__last_message_id", "-id").select_related("peer")
+    ).limit(limit).order_by("-peer__last_message_date", "-peer_id").select_related("peer")
     return await format_dialogs(model, tl_cls, tl_slice_cls, user_id, dialogs, allow_slicing, folder_id)
 
 

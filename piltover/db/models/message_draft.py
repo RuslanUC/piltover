@@ -17,6 +17,7 @@ class MessageDraft(Model):
     user: models.User = fields.ForeignKeyField("models.User")
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
     reply_to: models.MessageRef | None = NullableFKSetNull("models.MessageRef")
+    reply_to_local_id: int | None = fields.BigIntField(null=True, default=None)
     no_webpage: bool = fields.BooleanField(default=False)
     invert_media: bool = fields.BooleanField(default=False)
     # TODO: use tl for entities
@@ -40,10 +41,14 @@ class MessageDraft(Model):
             entities.append(objects[tl_id](**entity))
             entity["_"] = tl_id
 
+        reply_to = None
+        if self.reply_to_local_id is not None:
+            reply_to = InputReplyToMessage(reply_to_msg_id=self.reply_to_local_id)
+
         return DraftMessage(
             message=self.message,
             date=int(self.date.timestamp()),
-            reply_to=InputReplyToMessage(reply_to_msg_id=self.reply_to_id) if self.reply_to_id is not None else None,
+            reply_to=reply_to,
             no_webpage=self.no_webpage,
             invert_media=self.invert_media,
             entities=entities if entities else None,

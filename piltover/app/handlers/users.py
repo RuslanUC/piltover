@@ -91,7 +91,7 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
             object,
             await MessageRef.filter(
                 peer=peer, pinned=True,
-            ).annotate(max_id=Max("id")).first().values_list("max_id", flat=True)
+            ).annotate(max_id=Max("local_id")).first().values_list("max_id", flat=True)
         )
     )
 
@@ -105,7 +105,7 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
                 object,
                 await MessageRef.filter(
                     peer_id=personal_channel.peer.id,
-                ).annotate(max_id=Max("id")).first().values_list("max_id", flat=True)
+                ).annotate(max_id=Max("local_id")).first().values_list("max_id", flat=True)
             )
         ) or 0
     else:

@@ -24,7 +24,7 @@ async def get_poll_results(request: GetPollResults, user_id: int) -> Updates:
     if peer.type is PeerType.CHANNEL:
         query = append_channel_min_message_id_to_query_maybe(peer, query)
 
-    message = await MessageRef.get_or_none(query, id=request.msg_id).select_related(
+    message = await MessageRef.get_or_none(query, local_id=request.msg_id).select_related(
         "content__media", "content__media__poll"
     ).prefetch_related("content__media__poll__pollanswers")
     if message is None or message.content.media is None or message.content.media.poll is None:
@@ -40,7 +40,7 @@ async def get_poll_votes(request: GetPollVotes, user_id: int) -> VotesList:
         raise ErrorRpc(error_code=403, error_message="BROADCAST_FORBIDDEN")
 
     message = await MessageRef.get_or_none(
-        peer=peer, id=request.id,
+        peer=peer, local_id=request.id,
     ).select_related("content__media", "content__media__poll")
     if message is None or message.content.media is None or message.content.media.poll is None:
         raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
@@ -101,7 +101,7 @@ async def send_vote(request: SendVote, user_id: int) -> Updates:
     if peer.type is PeerType.CHANNEL:
         query = append_channel_min_message_id_to_query_maybe(peer, query)
 
-    message = await MessageRef.get_or_none(query, id=request.msg_id).select_related(
+    message = await MessageRef.get_or_none(query, local_id=request.msg_id).select_related(
         "content__media", "content__media__poll",
     ).prefetch_related("content__media__poll__pollanswers")
     if message is None or message.content.media is None or message.content.media.poll is None:

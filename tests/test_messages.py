@@ -221,7 +221,9 @@ async def test_internal_message_cache() -> None:
         assert messages[0].id == message.id
         assert messages[0].text == message.text
 
-        content_id_query = MessageRef.filter(id=message.id).first().values_list("content_id", flat=True)
+        content_id_query = MessageRef.filter(
+            peer__owner_id=client.me.id, local_id=message.id
+        ).first().values_list("content_id", flat=True)
         await MessageContent.filter(id=Subquery(content_id_query)).update(message="some another text 123456789")
 
         messages = [msg async for msg in client.get_chat_history("me")]
@@ -361,9 +363,12 @@ async def test_delete_history() -> None:
             MessageContent(author=user, message="test")
             for i in range(1500)
         ])
+        contents = await MessageContent.filter(author=user).order_by("id")
+        last_local_id, = await User.inc_msg_seq_bulk([user.id], len(contents))
+        first_local_id = last_local_id - len(contents)
         await MessageRef.bulk_create([
-            MessageRef(peer=peer, content=content)
-            for content in await MessageContent.filter(author=user)
+            MessageRef(local_id=first_local_id + num, peer=peer, content=content)
+            for num, content in enumerate(contents, start=1)
         ])
         await peer.sync_last_message()
 
@@ -451,6 +456,10 @@ async def test_getmessages_in_channel() -> None:
         ))
         assert len(messages.messages) == 1
         assert messages.messages[0].id == message_1.id
+        assert messages.messages[0].message == message_1.text
+
+        for _ in range(3):
+            await client.send_message("me", text="3")
 
         message_3 = await client.send_message("me", text="3")
         assert message_3
@@ -870,9 +879,13 @@ async def _make_test_get_search_results_calendar_data(client: TestClient) -> lis
 
     for message, date in zip(messages, _test_get_search_results_calendar_dates):
         await MessageContent.filter(
-            id=Subquery(MessageRef.filter(id=message.id).first().values_list("content_id", flat=True)),
+            id=Subquery(MessageRef.filter(
+                peer__owner_id=client.me.id, local_id=message.id
+            ).first().values_list("content_id", flat=True)),
         ).update(date=date)
-        await MessageRef.filter(id=message.id).update(version=F("version") + 1)
+        await MessageRef.filter(id__in=Subquery(
+            MessageRef.filter(peer__owner_id=client.me.id, local_id=message.id).values("id")
+        )).update(version=F("version") + 1)
 
     return [message.id for message in messages]
 
@@ -1584,7 +1597,7 @@ async def test_message_poll_min_flag(client_with_auth: ClientFactory) -> None:
 
     # TODO: remove, voting in a poll should invalidate cache automatically
     await MessageContent.filter(
-        id__in=Subquery(MessageRef.filter(id=message.id).values("content_id"))
+        id__in=Subquery(MessageRef.filter(peer__owner_id=client.me.id, local_id=message.id).values("content_id"))
     ).update(version=F("version") + 1)
 
     messages_raw = await client.invoke(GetMessages(id=[InputMessageID(id=message.id)]))

@@ -383,7 +383,7 @@ class MessageContent(Model):
             if self.channel_post:
                 from_channel = ref.peer.channel
                 from_name = from_channel.name
-                channel_post_id = ref.id
+                channel_post_id = ref.local_id
                 channel_post_author = self.post_author
             else:
                 # TODO: handle anonymous admins and "send_as_channel" in chats and channels
@@ -409,7 +409,7 @@ class MessageContent(Model):
             channel_post_author=channel_post_author,
 
             saved_peer=saved_peer,
-            saved_id=ref.id if to_self or discussion else None,
+            saved_id=ref.local_id if to_self or discussion else None,
             saved_from=self.author if to_self else None,
             saved_name=self.author.first_name if to_self else None,
             saved_date=self.date if to_self else None,

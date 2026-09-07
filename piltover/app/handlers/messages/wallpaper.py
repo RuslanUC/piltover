@@ -28,10 +28,9 @@ async def _get_wallpaper(request: SetChatWallPaper, user_id: int, peer: Peer) ->
         if set_wallpaper is None:
             raise ErrorRpc(error_code=400, error_message="WALLPAPER_INVALID")
     elif request.id is not None:
-        message_q = MessageRef.filter(
-            id=request.id, content__type=MessageType.SERVICE_CHAT_UPDATE_WALLPAPER
+        service_message = await MessageRef.get_or_none(
+            peer=peer, local_id=request.id, content__type=MessageType.SERVICE_CHAT_UPDATE_WALLPAPER
         ).select_related("content")
-        service_message = await message_q.get_or_none(peer=peer)
         if service_message is None or service_message.content.extra_info is None:
             raise ErrorRpc(error_code=400, error_message="WALLPAPER_NOT_FOUND")
 

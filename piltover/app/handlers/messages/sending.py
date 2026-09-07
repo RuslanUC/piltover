@@ -201,7 +201,7 @@ async def send_message_internal(
     reply_quote_offset = None
     if reply_to_message_id:
         reply_to = await MessageRef.get_or_none(
-            peer=peer, id=reply_to_message_id,
+            peer=peer, local_id=reply_to_message_id,
         ).select_related("content", "reply_to", "top_message")
         if reply_to is None:
             raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
@@ -308,12 +308,14 @@ async def send_message_internal(
 
         logger.debug(f"No unread messages, setting last read id for user {user.id} peer {peer!r} to {message.id}")
 
-        await Dialog.filter(owner_id=user.id, peer_id=peer.id).update(last_read_message_id=message.id)
+        await Dialog.filter(owner_id=user.id, peer_id=peer.id).update(last_read_message_id=message.local_id)
 
         if peer.type is PeerType.CHANNEL:
-            readstate_updates = await upd.update_read_history_inbox_channel(user.id, peer.channel_id, message.id, 0)
+            readstate_updates = await upd.update_read_history_inbox_channel(
+                user.id, peer.channel_id, message.local_id, 0,
+            )
         else:
-            _, readstate_updates = await upd.update_read_history_inbox(peer, message.id, 0)
+            _, readstate_updates = await upd.update_read_history_inbox(peer, message.local_id, 0)
 
         updates.updates.extend(readstate_updates.updates)
     else:
@@ -584,9 +586,9 @@ async def update_pinned_message(request: UpdatePinnedMessage, user_id: int):
 
     await _check_bot_blocked(user, peer)
 
-    message_query = Q(id=request.id, peer=peer, content__type=MessageType.REGULAR)
+    message_query = Q(local_id=request.id, peer=peer, content__type=MessageType.REGULAR)
     message_query = append_channel_min_message_id_to_query_maybe(peer, message_query)
-    message = await MessageRef.get_or_none(message_query).only("id", "content_id", "pinned")
+    message = await MessageRef.get_or_none(message_query).only("id", "local_id", "content_id", "pinned")
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
@@ -612,8 +614,8 @@ async def update_pinned_message(request: UpdatePinnedMessage, user_id: int):
         messages = {
             message.peer: [message]
             for message in await MessageRef.filter(id__in=ids).select_related("peer").only(
-                "id", "pinned", "peer__id", "peer__type", "peer__owner_id", "peer__user_id", "peer__chat_id",
-                "peer__channel_id",
+                "id", "local_id", "pinned", "peer__id", "peer__type", "peer__owner_id", "peer__user_id",
+                "peer__chat_id", "peer__channel_id",
             )
         }
 
@@ -621,7 +623,7 @@ async def update_pinned_message(request: UpdatePinnedMessage, user_id: int):
 
     if not request.unpin and not request.silent and not request.pm_oneside:
         updates = await send_message_internal(
-            user, peer, None, message.id, False, author=user_id, type=MessageType.SERVICE_PIN_MESSAGE,
+            user, peer, None, message.local_id, False, author=user_id, type=MessageType.SERVICE_PIN_MESSAGE,
             extra_info=MessageActionPinMessage().write(),
         )
         result.updates.extend(updates.updates)
@@ -632,17 +634,20 @@ async def update_pinned_message(request: UpdatePinnedMessage, user_id: int):
 @handler.on_request(DeleteMessages, ReqHandlerFlags.DONT_FETCH_USER)
 async def delete_messages(request: DeleteMessages, user_id: int) -> AffectedMessages:
     ids = request.id[:100]
-    messages: dict[int, list[int]] = defaultdict(list)
+    messages: dict[int, list[tuple[int, int]]] = defaultdict(list)
 
     if not request.revoke:
         messages = {
             user_id: cast(
-                list[int], await MessageRef.filter(id__in=ids, peer__owner_id=user_id).values_list("id", flat=True)
+                list[tuple[int, int]],
+                await MessageRef.filter(
+                    local_id__in=ids, peer__owner_id=user_id
+                ).values_list("id", "local_id")
             ),
         }
     else:
         all_messages = await MessageRef.filter(content_id__in=Subquery(
-            MessageRef.filter(id__in=ids, peer__owner_id=user_id).values("content_id"),
+            MessageRef.filter(local_id__in=ids, peer__owner_id=user_id).values("content_id"),
         )).select_related("peer")
         if not all_messages:
             return AffectedMessages(
@@ -651,9 +656,9 @@ async def delete_messages(request: DeleteMessages, user_id: int) -> AffectedMess
             )
 
         for message in all_messages:
-            messages[message.peer.owner_id].append(message.id)
+            messages[message.peer.owner_id].append((message.id, message.local_id))
 
-    all_ids = [i for ids in messages.values() for i in ids]
+    all_ids = [i[0] for ids in messages.values() for i in ids]
     if not all_ids:
         return AffectedMessages(
             pts=await State.add_pts(user_id, 0),
@@ -664,7 +669,10 @@ async def delete_messages(request: DeleteMessages, user_id: int) -> AffectedMess
     async with in_transaction():
         await MessageRef.filter(id__in=all_ids).delete()
         await Peer.sync_last_message_bulk(peer_ids)
-    pts = await upd.delete_messages(user_id, messages)
+    pts = await upd.delete_messages(user_id, {
+        msg_user_id: [msg_id[1] for msg_id in message_ids]
+        for msg_user_id, message_ids in messages.items()
+    })
 
     return AffectedMessages(pts=pts, pts_count=len(all_ids))
 
@@ -683,7 +691,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     _check_we_blocked_user(peer)
 
     if peer.type is PeerType.CHANNEL:
-        query = Q(id=request.id, peer=peer) & (
+        query = Q(local_id=request.id, peer=peer) & (
             Q(content__type=MessageType.REGULAR)
             | Q(scheduled_by_user_id=user.id, content__type=MessageType.SCHEDULED)
         )
@@ -1171,7 +1179,7 @@ async def save_draft(request: SaveDraft, user_id: int) -> bool:
     reply_to_message_id = _resolve_reply_id(request)
     reply_to = None
     if reply_to_message_id:
-        reply_to = await MessageRef.get_or_none(peer=peer, id=reply_to_message_id)
+        reply_to = await MessageRef.get_or_none(peer=peer, local_id=reply_to_message_id)
 
     if not request.message and reply_to is None:
         if await MessageDraft.filter(user_id=user_id, peer=peer).delete():
@@ -1190,6 +1198,7 @@ async def save_draft(request: SaveDraft, user_id: int) -> bool:
             "message": request.message,
             "date": datetime.now(UTC),
             "reply_to": reply_to,
+            "reply_to_local_id": reply_to.local_id if reply_to is not None else None,
             "no_webpage": request.no_webpage,
             "invert_media": request.invert_media if isinstance(request, (SaveDraft, SaveDraft_166)) else False,
             "entities": entities,
@@ -1209,7 +1218,7 @@ async def forward_messages(
     from_peer = None
 
     if isinstance(request.from_peer, InputPeerEmpty):
-        first_msg = await MessageRef.get_or_none(peer__owner=user, id=request.id[-1]).select_related(
+        first_msg = await MessageRef.get_or_none(peer__owner=user, local_id=request.id[-1]).select_related(
             "peer", "peer__chat", "peer__channel",
         )
         if not first_msg:
@@ -1266,7 +1275,7 @@ async def forward_messages(
         src_id = id_by_random_id.pop(cast(int, existing_message.random_id))
         del random_ids[src_id]
 
-    src_messages_query = Q(peer=from_peer, id__in=list(random_ids), content__type=MessageType.REGULAR)
+    src_messages_query = Q(peer=from_peer, local_id__in=list(random_ids), content__type=MessageType.REGULAR)
     src_messages_query = append_channel_min_message_id_to_query_maybe(from_peer, src_messages_query, from_participant)
 
     messages = await MessageRef.filter(src_messages_query).order_by("id").select_related(
@@ -1348,14 +1357,13 @@ async def forward_messages(
     reply_to_content_ids = [
         old_ids_to_new_ids.get(old.reply_to.content_id) if old.reply_to is not None else None
         for old in messages
-
     ]
 
     forwarded = await MessageRef.forward_for_peers_bulk(
         new_contents=forwarded_contents,
         to_peer=to_peer,
         peers=peers,
-        random_ids=[random_ids[ref.id] for ref in messages],
+        random_ids=[random_ids[ref.local_id] for ref in messages],
         random_user_id=user.id,
         reply_to_content_ids=reply_to_content_ids,
         pinned=SingleElementList(False, len(forwarded_contents)),
@@ -1453,7 +1461,7 @@ async def send_multi_media(
         raise ErrorRpc(error_code=400, error_message="MULTI_MEDIA_TOO_LONG")
 
     reply_to_message_id = _resolve_reply_id(request)
-    if reply_to_message_id and not await MessageRef.filter(id=reply_to_message_id, peer=peer).exists():
+    if reply_to_message_id and not await MessageRef.filter(local_id=reply_to_message_id, peer=peer).exists():
         raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
 
     file_ids_to_fetch = []
@@ -1576,7 +1584,7 @@ async def delete_history(request: DeleteHistory, user_id: int) -> AffectedHistor
 
     query = Q(peer=peer)
     if request.max_id:
-        query &= Q(id__lte=request.max_id)
+        query &= Q(local_id__lte=request.max_id)
     if request.min_date:
         query &= Q(content__date__gte=datetime.fromtimestamp(request.min_date, UTC))
     if request.max_date:
@@ -1588,7 +1596,7 @@ async def delete_history(request: DeleteHistory, user_id: int) -> AffectedHistor
 
     messages_to_delete = await MessageRef.filter(
         query
-    ).select_related("content").order_by("-id").limit(1001).values_list("id", "content_id")
+    ).select_related("content").order_by("-id").limit(1001).values_list("local_id", "content_id")
     for message_id, content_id in messages_to_delete:
         if len(messages[user_id]) == 1000:
             offset_id = message_id
@@ -1613,7 +1621,7 @@ async def delete_history(request: DeleteHistory, user_id: int) -> AffectedHistor
             #  (maybe just call delete_history for each user (opposite_peer)?)
             refs = await MessageRef.filter(
                 peers_q, content_id__in=content_ids,
-            ).select_related("peer").values_list("id", "peer__owner_id")
+            ).select_related("peer").values_list("local_id", "peer__owner_id")
             for ref_id, peer_user_id in refs:
                 messages[peer_user_id].append(ref_id)
 

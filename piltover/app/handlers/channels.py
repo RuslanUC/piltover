@@ -144,7 +144,7 @@ async def update_username(request: UpdateUsername, user_id: int) -> bool:
                     object,
                     await MessageRef.filter(
                         peer__channel=channel,
-                    ).order_by("-id").first().values_list("id", flat=True)
+                    ).order_by("-local_id").first().values_list("local_id", flat=True)
                 )
             )
             if channel.min_available_id is not None:
@@ -332,7 +332,7 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
                 object,
                 await MessageRef.filter(
                     peer=peer, id__gte=participant.min_message_id,
-                ).annotate(min_id=Min("id")).first().values_list("min_id", flat=True)
+                ).annotate(min_id=Min("local_id")).first().values_list("min_id", flat=True)
             )
         )
 
@@ -347,7 +347,7 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
                 await MessageRef.filter(
                     peer__owner_id=user_id,
                     peer__chat_id=channel.migrated_from_id,
-                ).order_by("-id").first().values_list("id", flat=True)
+                ).order_by("-id").first().values_list("local_id", flat=True)
             )
         ) or 0
 
@@ -428,7 +428,7 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
                     object,
                     await MessageRef.filter(
                         peer=peer, pinned=True,
-                    ).annotate(max_id=Max("id")).first().values_list("max_id", flat=True)
+                    ).annotate(max_id=Max("local_id")).first().values_list("max_id", flat=True)
                 )
             ),
             pts=channel.pts,
@@ -559,11 +559,11 @@ async def get_messages(request: GetMessages, user_id: int) -> Messages | Message
 
     query = Q()
     if ids:
-        query |= Q(id__in=ids)
+        query |= Q(local_id__in=ids)
     if reply_ids:
         query |= Q(id__in=Subquery(
             MessageRef.filter(
-                peer__channel=channel, id__in=reply_ids,
+                peer__channel=channel, local_id__in=reply_ids,
             ).values_list("reply_to_id", flat=True)
         ))
 
@@ -589,24 +589,27 @@ async def delete_messages(request: DeleteMessages, user_id: int) -> AffectedMess
     peer = await Peer.get(channel=channel).only("id")
 
     ids = request.id[:100]
-    ids_query = Q(id__in=ids, peer=peer)
+    ids_query = Q(local_id__in=ids, peer=peer)
     ids_query = append_channel_min_message_id_to_query_maybe(channel, ids_query, participant, user_id)
     message_ids = cast(
-        list[int],
+        list[tuple[int, int]],
         cast(
             object,
-            await MessageRef.filter(ids_query).values_list("id", flat=True)
+            await MessageRef.filter(ids_query).values_list("id", "local_id")
         )
     )
 
     if not message_ids:
         return AffectedMessages(pts=channel.pts, pts_count=0)
 
+    message_ref_ids = [msg_id[0] for msg_id in message_ids]
+    message_local_ids = [msg_id[1] for msg_id in message_ids]
+
     async with in_transaction():
-        await MessageRef.filter(id__in=message_ids).delete()
+        await MessageRef.filter(id__in=message_ref_ids).delete()
         await peer.sync_last_message()
 
-    _, pts = await upd.delete_messages_channel(channel, message_ids)
+    _, pts = await upd.delete_messages_channel(channel, message_local_ids)
 
     return AffectedMessages(pts=pts, pts_count=len(message_ids))
 
@@ -805,7 +808,7 @@ async def get_participants(request: GetParticipants, user_id: int) -> ChannelPar
         if filt.top_msg_id:
             query = query.filter(user_id__in=Subquery(
                 MessageRef.filter(
-                    peer__channel=channel, content__reply_to_id=filt.top_msg_id,
+                    peer__channel=channel, top_message_local_id=filt.top_msg_id,
                 ).distinct().values_list("content__author_id", flat=True)
             ))
     elif isinstance(filt, ChannelParticipantsBanned):
@@ -901,23 +904,23 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
         return True
 
     unread_ids = cast(
-        tuple[int, int] | None,
+        tuple[int, int, int] | None,
         cast(
             object,
             await MessageRef.filter(
-                id__lte=request.max_id, peer=peer,
-            ).order_by("-id").first().values_list("id", "content_id")
+                local_id__lte=request.max_id, peer=peer,
+            ).order_by("-id").first().values_list("id", "local_id", "content_id")
         )
     )
     if not unread_ids:
         return True
 
-    unread_max_id, content_id = unread_ids
+    unread_max_id, unread_max_local_id, content_id = unread_ids
     unread_count = await MessageRef.filter(peer=peer, id__gt=unread_max_id).count()
-    await Dialog.filter(id=dialog.id).update(last_read_message_id=unread_max_id)
+    await Dialog.filter(id=dialog.id).update(last_read_message_id=unread_max_local_id)
     await ReadHistoryChunk.create(user_id=user_id, peer=peer, read_content_id=content_id)
 
-    await upd.update_read_history_inbox_channel(user_id, peer.channel_id, unread_max_id, unread_count)
+    await upd.update_read_history_inbox_channel(user_id, peer.channel_id, unread_max_local_id, unread_count)
 
     prev_last_id = cast(
         int | None,
@@ -931,11 +934,11 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
 
     read_messages_by_user_ids: dict[int, int] = dict(
         await MessageRef.filter(
-            peer=peer, id__gt=prev_last_id, id__lte=unread_max_id, content__author_id__not=user_id,
-        ).group_by("content__author_id").annotate(max_id=Max("id")).values_list("content__author_id", "max_id")
+            peer=peer, local_id__gt=prev_last_id, local_id__lte=unread_max_local_id, content__author_id__not=user_id,
+        ).group_by("content__author_id").annotate(max_id=Max("local_id")).values_list("content__author_id", "max_id")
     )
     if read_messages_by_user_ids:
-        await peer.update_max_read_id(unread_max_id)
+        await peer.update_max_read_id(unread_max_local_id)
         await upd.update_read_history_outbox_channel(peer.channel, read_messages_by_user_ids)
 
     return True
@@ -1310,7 +1313,7 @@ async def toggle_pre_history_hidden(request: TogglePreHistoryHidden, user_id: in
             # TODO: use Max("id") instead of .order_by("id").first() ?
             await MessageRef.filter(
                 peer__channel=channel,
-            ).order_by("-id").first().values_list("id", flat=True)
+            ).order_by("-local_id").first().values_list("local_id", flat=True)
         )
     )
     if channel.min_available_id is not None:
@@ -1732,7 +1735,7 @@ async def read_message_contents(request: ReadMessageContents, user_id: int) -> b
         return True
 
     valid_refs = await MessageRef.filter(
-        peer__channel=channel, id__in=request.id[:100],
+        peer__channel=channel, local_id__in=request.id[:100],
     ).select_related("peer", "content", "content__media", "content__media__file")
 
     message_ids = await read_message_contents_internal(user_id, valid_refs)
@@ -1752,23 +1755,23 @@ async def delete_history(request: DeleteHistory, user_id: int) -> Updates:
 
     participant = await channel.get_participant_raise(user_id)
 
-    new_min_available_id = cast(
+    new_min_available_local_id = cast(
         int | None,
         cast(
             object,
             # TODO: use Max("id") instead of .order_by("-id").first() ?
             await MessageRef.filter(
-                peer__channel=channel, id__lte=request.max_id,
-            ).order_by("-id").first().values_list("id", flat=True),
+                peer__channel=channel, local_id__lte=request.max_id,
+            ).order_by("-local_id").first().values_list("local_id", flat=True),
         )
     ) or 0
 
     if not request.for_everyone:
-        if new_min_available_id < (participant.min_message_id or 0):
+        if new_min_available_local_id <= (participant.min_message_id or 0):
             return upd.UpdatesWithDefaults(updates=[])
-        participant.min_message_id = new_min_available_id or None
+        participant.min_message_id = new_min_available_local_id or None
         await participant.save(update_fields=["min_message_id"])
-        return await upd.update_channel_participant_available_message(user_id, channel, new_min_available_id)
+        return await upd.update_channel_participant_available_message(user_id, channel, new_min_available_local_id)
 
     if not channel.admin_has_permission(participant, ChatAdminRights.DELETE_MESSAGES):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
@@ -1776,21 +1779,21 @@ async def delete_history(request: DeleteHistory, user_id: int) -> Updates:
     peer = await Peer.get(channel=channel).only("id")
 
     message_ids = cast(
-        list[int],
+        list[tuple[int, int]],
         await MessageRef.filter(
-            peer=peer, id__lte=request.max_id,
-        ).order_by("-id").limit(APP_CONFIG.channel_delete_history_min_id_threshold + 1).values_list("id", flat=True)
+            peer=peer, local_id__lte=request.max_id,
+        ).order_by("-id").limit(APP_CONFIG.channel_delete_history_min_id_threshold + 1).values_list("id", "local_id")
     )
     if len(message_ids) > APP_CONFIG.channel_delete_history_min_id_threshold:
-        channel.min_available_id = channel.min_available_id_force = message_ids[0]
+        channel.min_available_id = channel.min_available_id_force = message_ids[0][1]
         await channel.save(update_fields=["min_available_id", "min_available_id_force"])
-        return await upd.update_channel_available_messages(channel, new_min_available_id)
+        return await upd.update_channel_available_messages(channel, new_min_available_local_id)
 
     message_ids.pop(0)
     async with in_transaction():
-        await MessageRef.filter(id__in=message_ids).delete()
+        await MessageRef.filter(id__in=[msg_id[0] for msg_id in message_ids]).delete()
         await peer.sync_last_message()
-    updates, _ = await upd.delete_messages_channel(channel, message_ids)
+    updates, _ = await upd.delete_messages_channel(channel, [msg_id[1] for msg_id in message_ids])
     return updates
 
 
@@ -1811,10 +1814,10 @@ async def delete_participant_history(request: DeleteParticipantHistory, user_id:
     peer = await Peer.get(channel=channel).only("id")
 
     messages_to_delete = cast(
-        list[int],
+        list[tuple[int, int]],
         await MessageRef.filter(
             peer=peer, content__author_id=target_id,
-        ).order_by("-id").limit(1001).values_list("id", flat=True),
+        ).order_by("-id").limit(1001).values_list("id", "local_id"),
     )
 
     if not messages_to_delete:
@@ -1822,13 +1825,13 @@ async def delete_participant_history(request: DeleteParticipantHistory, user_id:
 
     offset_id = 0
     if len(messages_to_delete) > 1000:
-        offset_id = messages_to_delete.pop()
+        offset_id = messages_to_delete.pop()[1]
 
     async with in_transaction():
-        await MessageRef.filter(id__in=messages_to_delete).delete()
+        await MessageRef.filter(id__in=[msg_id[0] for msg_id in messages_to_delete]).delete()
         await peer.sync_last_message()
 
-    _, new_pts = await upd.delete_messages_channel(channel, messages_to_delete)
+    _, new_pts = await upd.delete_messages_channel(channel, [msg_id[1] for msg_id in messages_to_delete])
     return AffectedHistory(
         pts=new_pts,
         pts_count=len(messages_to_delete),

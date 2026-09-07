@@ -344,15 +344,19 @@ async def add_chat_user(request: AddChatUser, user_id: int) -> InvitedUsers:
         ).order_by("-id").limit(limit).only("id", "content_id", "pinned")
         # TODO: reply_to
         if messages_to_forward:
+            messages_num = len(messages_to_forward)
             messages_to_forward.reverse()
             async with in_transaction():
+                last_local_id, = await User.inc_msg_seq_bulk([user_peer_id], messages_num)
+                first_local_id = last_local_id - messages_num
                 await MessageRef.bulk_create([
                     MessageRef(
+                        local_id=first_local_id + num,
                         peer=chat_peers[user_peer_id],
                         content_id=message.content_id,
                         pinned=message.pinned,
                     )
-                    for message in messages_to_forward
+                    for num, message in enumerate(messages_to_forward, start=1)
                 ])
                 await chat_peers[user_peer_id].sync_last_message()
             content_ids = [message.content_id for message in messages_to_forward]

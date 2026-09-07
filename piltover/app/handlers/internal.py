@@ -63,7 +63,7 @@ async def send_scheduled_message(request: SendScheduledMessage) -> TLObject:
     peer = scheduled.peer
     new_message = messages[0]
 
-    await upd.delete_scheduled_messages(scheduled_by_user_id, peer, [scheduled.id], [new_message.id])
+    await upd.delete_scheduled_messages(scheduled_by_user_id, peer, [scheduled.local_id], [new_message.local_id])
 
     return TaggedBool(value=True)
 

@@ -41,7 +41,7 @@ class SavedDialog(DialogBase):
                 await models.MessageRef.filter(
                     peer__owner_id=self.owner_id, peer__user_id=self.owner_id,
                     content__fwd_header__saved_peer=self.peer,
-                ).order_by("-id").first().values_list("id", flat=True)
+                ).order_by("-id").first().values_list("local_id", flat=True)
             )
         )
 

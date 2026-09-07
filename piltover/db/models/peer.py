@@ -145,7 +145,15 @@ SET
         FROM messageref m
         INNER JOIN messagecontent mc ON m.content_id = mc.id
         WHERE m.peer_id = peer.id AND mc.type != {MessageType.SCHEDULED.value} 
-        ORDER BY m.id DESC
+        ORDER BY m.local_id DESC
+        LIMIT 1
+    ),
+    last_message_local_id = (
+        SELECT m.local_id
+        FROM messageref m
+        INNER JOIN messagecontent mc ON m.content_id = mc.id
+        WHERE m.peer_id = peer.id AND mc.type != {MessageType.SCHEDULED.value} 
+        ORDER BY m.local_id DESC
         LIMIT 1
     ),
     last_message_date = (
@@ -153,7 +161,7 @@ SET
         FROM messageref m
         INNER JOIN messagecontent mc ON m.content_id = mc.id
         WHERE m.peer_id = peer.id AND mc.type != {MessageType.SCHEDULED.value} 
-        ORDER BY m.id DESC
+        ORDER BY m.local_id DESC
         LIMIT 1
     )
 WHERE {{where_condition}};
@@ -167,7 +175,8 @@ class Peer(Model):
     blocked_at: datetime | None = fields.DatetimeField(null=True, default=None)
     user_ttl_period_days: int | None = fields.SmallIntField(null=True, default=None)
     user_has_wallpaper: bool = fields.BooleanField(default=False)
-    last_message_id: int | None = fields.BigIntField(null=True, default=None, db_index=True)
+    last_message_id: int | None = fields.BigIntField(null=True, default=None)
+    last_message_local_id: int | None = fields.BigIntField(null=True, default=None, db_index=True)
     last_message_date: datetime | None = fields.DatetimeField(null=True, default=None, db_index=True)
     out_max_read_id: int = fields.BigIntField(default=0)
 
