@@ -1,20 +1,17 @@
-from time import time
-
 from piltover.enums import ReqHandlerFlags
-from piltover.tl import WebPageEmpty, AttachMenuBots, EmojiKeywordsDifference, \
-    PeerSettings, TLObjectVector, MessageMediaEmpty, MessageMediaWebPage, WebPagePending, WebPage
+from piltover.tl import WebPageEmpty, AttachMenuBots, EmojiKeywordsDifference, PeerSettings, TLObjectVector, \
+    MessageMediaEmpty
 from piltover.tl.base.channels import SponsoredMessageReportResult
 from piltover.tl.functions.channels import GetSponsoredMessages_133
 from piltover.tl.functions.messages import GetPeerSettings, GetQuickReplies, GetMessageEditData, \
-    GetEmojiKeywordsLanguages, GetWebPage, GetTopReactions, GetAttachMenuBots, \
-    GetStickers, GetSuggestedDialogFilters, GetSavedReactionTags, \
-    GetFeaturedStickers, GetFeaturedEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, \
-    GetEmojiKeywordsDifference, GetAvailableEffects, GetSponsoredMessages, ReportSponsoredMessage, ViewSponsoredMessage, \
-    ClickSponsoredMessage
+    GetEmojiKeywordsLanguages, GetWebPage, GetTopReactions, GetAttachMenuBots, GetStickers, GetSuggestedDialogFilters, \
+    GetSavedReactionTags, GetFeaturedStickers, GetFeaturedEmojiStickers, GetEmojiKeywords, GetWebPagePreview, \
+    GetDefaultTagReactions, GetEmojiKeywordsDifference, GetAvailableEffects, GetSponsoredMessages, \
+    ReportSponsoredMessage, ViewSponsoredMessage, ClickSponsoredMessage
 from piltover.tl.types.channels import SponsoredMessageReportResultReported
-from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Reactions, SavedReactionTags, \
-    Stickers, FeaturedStickers, MessageEditData, \
-    QuickReplies, AvailableEffects, SponsoredMessages, SponsoredMessagesEmpty, WebPagePreview
+from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Reactions, SavedReactionTags, Stickers, \
+    FeaturedStickers, MessageEditData, QuickReplies, AvailableEffects, SponsoredMessages, SponsoredMessagesEmpty, \
+    WebPagePreview
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stubs")

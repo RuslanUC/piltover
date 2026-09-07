@@ -5,7 +5,7 @@ if TYPE_CHECKING:
     from piltover.tl.serialization_context import SerializationContext
 
 
-def downgrade_query_id_for_140(obj: tl.types._root.WebViewResultUrl, ctx: SerializationContext) -> int:
+def downgrade_query_id_for_140(obj: tl.types.WebViewResultUrl, _: SerializationContext) -> int:
     if obj.query_id is not None:
         return obj.query_id
     return 0

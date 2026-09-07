@@ -319,9 +319,7 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
 
     chat_peers = {
         peer.owner_id: peer
-        for peer in cast(
-            list[Peer], await Peer.filter(chat=chat_or_channel).select_related("chat", "channel")
-        )
+        for peer in await Peer.filter(chat=chat_or_channel).select_related("chat", "channel")
     }
 
     updates = await upd.update_chat_participants(cast(Chat, chat_or_channel), list(chat_peers.values()))
@@ -499,11 +497,7 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
 
     all_peers = {
         peer.owner_id: peer
-        for peer in cast(
-            list[Peer], await Peer.filter(
-                owner_id__in=[user.id, *requested_users], type=peer_type, chat=chat,
-            )
-        )
+        for peer in await Peer.filter(owner_id__in=[user.id, *requested_users], type=peer_type, chat=chat)
     }
 
     # TODO: send messages in bulk

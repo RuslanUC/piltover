@@ -1,4 +1,4 @@
-from typing import cast, Callable, Awaitable
+from typing import Callable, Awaitable
 
 from piltover.app.bot_handlers.botfather import BotfatherBotInteractionHandler
 from piltover.app.bot_handlers.botfather.callback_handler import botfather_callback_query_handler
@@ -34,7 +34,7 @@ async def process_message_to_bot(peer: Peer, message: MessageRef) -> MessageRef 
     bot_username = await peer.user.get_raw_username()
     handler = HANDLERS[bot_username]
 
-    text = cast(str, message.content.message)
+    text = message.content.message
     if not text.startswith("/"):
         return await handler.handle_text(peer, message)
 

@@ -77,4 +77,4 @@ class ChannelUpdate(Model):
                     pts_count=self.pts_count,
                 )
 
-        return None
+        raise Unreachable

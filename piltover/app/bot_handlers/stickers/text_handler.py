@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from tortoise.transactions import in_transaction, F
+from tortoise.expressions import F
+from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers.interaction_handler import BotInteractionHandler

@@ -388,8 +388,9 @@ class Client:
 
             self.active_sessions.clear()
 
+    @staticmethod
     async def _wait_result_with_ack(
-            self, task: AsyncTaskiqTask[str], message_id: int, session: Session, method_name: str,
+            task: AsyncTaskiqTask[str], message_id: int, session: Session, method_name: str,
     ) -> TaskiqResult[str]:
         start_time = time.perf_counter()
         result = None

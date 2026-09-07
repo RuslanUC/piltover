@@ -4,10 +4,9 @@ import asyncio
 import base64
 import os
 from pathlib import Path
-from typing import cast
 
 from loguru import logger
-from taskiq import TaskiqEvents, AsyncBroker
+from taskiq import TaskiqEvents, AsyncBroker, TaskiqState
 
 from piltover.gateway.client import Client
 from piltover.message_brokers.base_broker import BaseMessageBroker
@@ -39,17 +38,17 @@ class Gateway:
         self.fingerprint_signed: int = get_public_key_fingerprint(self.server_keys.public_key, True)
 
         if salt_key is None:
-            salt_key = os.urandom(32)
+            self.salt_key = salt_key = os.urandom(32)
             logger.info(f"Salt key is None, generating new one: {base64.b64encode(salt_key).decode('latin1')}")
-
-        self.salt_key = cast(bytes, salt_key)
+        else:
+            self.salt_key = salt_key
 
         self.broker = broker
         self.message_broker = message_broker
 
         self.broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, self._broker_startup)
 
-    async def _broker_startup(self, *args, **kwargs) -> None:
+    async def _broker_startup(self, _: TaskiqState) -> None:
         SessionManager.set_broker(self.message_broker)
 
     @logger.catch

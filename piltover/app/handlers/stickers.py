@@ -132,6 +132,8 @@ async def _validate_tgs(file: File) -> None:
 
     storage = request_ctx.get().storage
     data = await storage.documents.get_part(file.physical_id, 0, 64 * 1024)
+    if data is None:
+        raise ErrorRpc(error_code=400, error_message="STICKER_TGS_NOTGS")
     try:
         data = gzip.decompress(data)
         tgs = json.loads(data)
@@ -181,9 +183,12 @@ async def validate_webm(file: File, is_emoji: bool) -> None:
 
 
 async def _get_sticker_files(
-        stickers: list[InputStickerSetItem | InputStickerSetItem_133], user_id: int, set_type: StickerSetType | None,
-        is_emoji: bool,
+        stickers: list[InputStickerSetItem | InputStickerSetItem_133], user_id: int,
+        default_type: StickerSetType | None, is_emoji: bool,
 ) -> tuple[dict[int, File], StickerSetType]:
+    if not stickers:
+        raise Unreachable
+
     files_q = Q()
     base_q = Q(type__in=[FileType.DOCUMENT_STICKER, FileType.DOCUMENT], mime_type__in=allowed_mimes, stickerset=None)
     ids = set()
@@ -196,6 +201,8 @@ async def _get_sticker_files(
             raise ErrorRpc(error_code=400, error_message="STICKER_EMOJI_INVALID")
 
         input_doc = input_sticker.document
+        if not isinstance(input_doc, InputDocument):
+            raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
         valid, const = File.is_file_ref_valid(input_doc.file_reference, user_id, input_doc.id)
         if not valid:
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
@@ -214,22 +221,29 @@ async def _get_sticker_files(
     if ids:
         files_q |= Q(id__in=ids)
 
-    files = {file.id: file for file in await File.filter(base_q & files_q)}
+    files = await File.filter(base_q & files_q)
+    if not files:
+        raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
-    for input_sticker in stickers:
-        file = files.get(input_sticker.document.id)
-        if file is None:
+    files_by_id = {file.id: file for file in files}
+
+    if default_type is not None:
+        set_type = default_type
+    else:
+        file = files[0]
+        if file.mime_type in ("image/png", "image/webp"):
+            set_type = StickerSetType.STATIC
+        elif file.mime_type == "video/webm":
+            set_type = StickerSetType.VIDEO
+        elif file.mime_type == "application/x-tgsticker":
+            set_type = StickerSetType.ANIMATED
+        else:
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
-        if set_type is None:
-            if file.mime_type in ("image/png", "image/webp"):
-                set_type = StickerSetType.STATIC
-            elif file.mime_type == "video/webm":
-                set_type = StickerSetType.VIDEO
-            elif file.mime_type == "application/x-tgsticker":
-                set_type = StickerSetType.ANIMATED
-            else:
-                raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
+    for input_sticker in stickers:
+        file = files_by_id.get(input_sticker.document.id)
+        if file is None:
+            raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
         if file.mime_type not in set_types_to_mimes[set_type]:
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
@@ -243,7 +257,7 @@ async def _get_sticker_files(
         else:
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
-    return files, set_type
+    return files_by_id, set_type
 
 
 async def _get_sticker_thumb(input_doc: InputDocument, user_id: int, set_type: StickerSetType, is_emoji: bool) -> File:

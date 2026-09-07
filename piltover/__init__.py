@@ -5,6 +5,7 @@ from loguru import logger
 logger.debug("Importing piltover.tl...")
 
 start_time = time()
+# noinspection pep8
 import piltover.tl
 
 logger.debug(f"Importing tl piltover.tl module took {time() - start_time:.2f} seconds.")

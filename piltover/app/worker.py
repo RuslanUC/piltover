@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from taskiq import TaskiqEvents
+from taskiq import TaskiqEvents, TaskiqState
 from tortoise import Tortoise
 
 from piltover.app.handlers import register_handlers
@@ -11,7 +11,7 @@ from piltover.utils.debug.tracing import Tracing
 from piltover.worker import Worker
 
 
-async def _run(*args, **kwargs) -> None:
+async def _run(_: TaskiqState) -> None:
     if SYSTEM_CONFIG.debug_tracing:
         Tracing.init(SYSTEM_CONFIG.debug_tracing.backend, zipkin_address=SYSTEM_CONFIG.debug_tracing.zipkin_address)
     await Tortoise.init(config=TORTOISE_ORM)

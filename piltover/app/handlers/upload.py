@@ -40,7 +40,7 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user_id: int) 
 
     with measure_time("UploadingFile.get_or_create(...)"):
         file, created = await UploadingFile.get_or_create(user_id=user_id, file_id=request.file_id, defaults=defaults)
-        if not created and request.file_part == 0 and file.mime is None and mime is not None:
+        if not created and request.file_part == 0 and mime is not None:
             file.mime = mime
             await file.save(update_fields=["mime"])
 

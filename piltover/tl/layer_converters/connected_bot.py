@@ -7,8 +7,6 @@ if TYPE_CHECKING:
 
 
 def get_can_reply_fallback_for_176(obj: tl.types.ConnectedBot, _: SerializationContext) -> bool:
-    if obj.rights is None:
-        return False
     return obj.rights.reply
 
 

@@ -5,5 +5,5 @@ if TYPE_CHECKING:
     from piltover.tl.serialization_context import SerializationContext
 
 
-def downgrade_title_for_158(obj: tl.types.chatlists.ChatlistInvite, ctx: SerializationContext) -> str:
+def downgrade_title_for_158(obj: tl.types.chatlists.ChatlistInvite, _: SerializationContext) -> str:
     return obj.title.text

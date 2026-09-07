@@ -39,13 +39,6 @@ class DialogFolder(Model):
         )
 
     def to_tl(self) -> DialogFilter:
-        if not self.pinned_peers._fetched:
-            raise RuntimeError("Dialog folder pinned peers must be prefetched")
-        if not self.include_peers._fetched:
-            raise RuntimeError("Dialog folder pinned peers must be prefetched")
-        if not self.exclude_peers._fetched:
-            raise RuntimeError("Dialog folder pinned peers must be prefetched")
-
         return DialogFilter(
             id=self.id_for_user,
             title=TextWithEntities(text=self.name, entities=[]),

@@ -12,7 +12,7 @@ from piltover.config import SYSTEM_CONFIG
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, MessageRef, MessageContent, User, Presence, MessageDraft, Channel, \
     TaskIqScheduledMessage, TelegramUser
-from piltover.db.models.peer import peer_is_owned_min, peer_is_channel_min, peer_is_channel
+from piltover.db.models.peer import peer_is_owned_min, peer_is_channel
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import Unreachable
 from piltover.tl import TLObject
@@ -26,7 +26,7 @@ try:
     from aiogram.client.default import DefaultBotProperties
     from aiogram.enums import ParseMode
     from aiogram.exceptions import TelegramAPIError
-except:
+except ImportError:
     AioGramBot = DefaultBotProperties = ParseMode = TelegramAPIError = None
 
 handler = MessageHandler("internal")

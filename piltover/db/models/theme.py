@@ -27,9 +27,6 @@ class Theme(Model):
     themesettingss: fields.ReverseRelation[models.ThemeSettings]
 
     def to_tl(self) -> ThemeToFormat:
-        if not self.themesettingss._fetched:
-            raise ValueError("\"themesettingss\" must be fetched!")
-
         # TODO: cache tl theme
         # TODO: count installs maybe
         return ThemeToFormat(

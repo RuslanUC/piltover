@@ -146,7 +146,7 @@ async def resize_photo(
         )
         for idx, size in enumerate(sizes)
     ]
-    res: list[tuple[BytesIO, int, int]] = await gather(*tasks)
+    res: list[tuple[BytesIO | None, int, int]] = await gather(*tasks)
 
     result = []
 

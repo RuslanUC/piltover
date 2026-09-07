@@ -14,6 +14,9 @@ CURRENT_DH_VERSION = 1
 
 # noinspection PyUnusedLocal
 def gen_safe_prime(size: int = 2048) -> tuple[int, int]:
+    if size != 2048:
+        raise RuntimeError("Invalid size")
+
     """
     parameters = dh.generate_parameters(generator=2, key_size=size)
     numbers = parameters.parameter_numbers()

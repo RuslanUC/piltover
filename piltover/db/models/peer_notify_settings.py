@@ -76,13 +76,6 @@ class PeerNotifySettings(Model):
 
     @staticmethod
     @overload
-    async def peer_from_tl(
-            user_id: int, notify_peer: BaseInputNotifyPeer,
-    ) -> tuple[models.Peer | None, NotifySettingsNotPeerType | None]:
-        ...
-
-    @staticmethod
-    @overload
     async def peer_from_tl(user_id: int, notify_peer: InputNotifyPeer) -> tuple[models.Peer, None]:
         ...
 
@@ -91,6 +84,13 @@ class PeerNotifySettings(Model):
     async def peer_from_tl(
             user_id: int, notify_peer: InputNotifyUsers | InputNotifyChats | InputNotifyBroadcasts,
     ) -> tuple[None, NotifySettingsNotPeerType]:
+        ...
+
+    @staticmethod
+    @overload
+    async def peer_from_tl(
+            user_id: int, notify_peer: BaseInputNotifyPeer,
+    ) -> tuple[models.Peer | None, NotifySettingsNotPeerType | None]:
         ...
 
     @staticmethod

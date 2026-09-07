@@ -1,11 +1,11 @@
 from io import BytesIO
-from typing import cast
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.context import request_ctx
 from piltover.db.enums import MessageType, PeerType
-from piltover.db.models import User, Peer, Wallpaper, ChatWallpaper, MessageRef
+from piltover.db.models import User, Peer, Wallpaper, ChatWallpaper, MessageRef, peer_is_user
+from piltover.db.models.peer import peer_is_self_min
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable, Error
 from piltover.tl import Updates, InputPeerUser, InputUser, TLObject, MessageActionSetChatWallPaper, InputPeerChannel, \
@@ -101,9 +101,10 @@ async def set_chat_wallpaper(request: SetChatWallPaper, user_id: int) -> Updates
     if peer.type is PeerType.CHANNEL:
         return await set_channel_wallpaper(request, user, peer)
 
-    if peer.type is PeerType.USER:
-        target = cast(User, peer.user)
-    elif peer.type is PeerType.SELF:
+    peer_ = peer
+    if peer_is_user(peer_):
+        target = peer_.user
+    elif peer_is_self_min(peer_):
         target = user
     else:
         raise Unreachable

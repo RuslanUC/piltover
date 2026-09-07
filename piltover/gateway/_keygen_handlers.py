@@ -110,8 +110,7 @@ def _req_dh_params_sync(client: Client, req_dh_params: ReqDHParams) -> tuple[int
     auth_data.is_temp = isinstance(p_q_inner_data, (PQInnerDataTemp, PQInnerDataTempDc))
     auth_data.expires_in = max(cast(PQInnerDataTemp, p_q_inner_data).expires_in, 86400) if auth_data.is_temp else 0
 
-    new_nonce = Int256.write(p_q_inner_data.new_nonce)
-    auth_data.new_nonce = new_nonce
+    auth_data.new_nonce = new_nonce = Int256.write(p_q_inner_data.new_nonce)
     # TODO: set server_nonce to server salt somehow
 
     logger.info("Generating safe prime...")
@@ -140,20 +139,16 @@ def _req_dh_params_sync(client: Client, req_dh_params: ReqDHParams) -> tuple[int
 
     answer_with_hash = hashlib.sha1(answer).digest() + answer
     answer_with_hash += sys_rng.randbytes(-len(answer_with_hash) % 16)
-    auth_data.tmp_aes_key = (
+    auth_data.tmp_aes_key = tmp_aes_key = (
             hashlib.sha1(new_nonce + server_nonce_bytes).digest()
             + hashlib.sha1(server_nonce_bytes + new_nonce).digest()[:12]
     )
-    auth_data.tmp_aes_iv = (
+    auth_data.tmp_aes_iv = tmp_aes_iv = (
             hashlib.sha1(server_nonce_bytes + new_nonce).digest()[12:]
             + hashlib.sha1(new_nonce + new_nonce).digest()
             + new_nonce[:4]
     )
-    encrypted_answer = tgcrypto.ige256_encrypt(
-        answer_with_hash,
-        auth_data.tmp_aes_key,
-        auth_data.tmp_aes_iv,
-    )
+    encrypted_answer = tgcrypto.ige256_encrypt(answer_with_hash, tmp_aes_key, tmp_aes_iv)
 
     return p_q_inner_data.nonce, auth_data.server_nonce, encrypted_answer
 
@@ -170,10 +165,12 @@ async def req_dh_params_handler(client: Client, req_dh_params: ReqDHParams):
     ))
 
 
-def _set_client_dh_params_sync(auth_data: GenAuthData, set_client_DH_params: SetClientDHParams) -> tuple[ClientDHInnerData, bytes]:
+def _set_client_dh_params_sync(
+        auth_data: GenAuthData, set_client_DH_params: SetClientDHParams,
+) -> tuple[ClientDHInnerData, bytes]:
     if not isinstance(auth_data, GenAuthData) \
             or auth_data.tmp_aes_key is None \
-            or auth_data.server_nonce != set_client_DH_params.server_nonce:
+            or auth_data.tmp_aes_iv is None:
         raise Disconnection(404)
 
     decrypted_params = tgcrypto.ige256_decrypt(
@@ -203,6 +200,10 @@ def _set_client_dh_params_sync(auth_data: GenAuthData, set_client_DH_params: Set
 
 async def set_client_dh_params(client: Client, set_client_DH_params: SetClientDHParams):
     auth_data = client.gen_auth_data
+    if not isinstance(auth_data, GenAuthData) \
+            or auth_data.tmp_aes_key is None \
+            or auth_data.new_nonce is None:
+        raise Disconnection(404)
 
     client_DH_inner_data, auth_key_digest = await client.loop.run_in_executor(
         executor, _set_client_dh_params_sync, auth_data, set_client_DH_params,
@@ -219,9 +220,8 @@ async def set_client_dh_params(client: Client, set_client_DH_params: SetClientDH
         )
     ))
 
-    auth_data.auth_key_id = Long.read_bytes(auth_key_hash)
+    auth_data.auth_key_id = auth_key_id = Long.read_bytes(auth_key_hash)
 
-    auth_key_id = auth_data.auth_key_id
     auth_key = auth_data.auth_key
     expires_in = auth_data.expires_in
     if expires_in:

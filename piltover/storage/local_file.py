@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-from typing import cast
 from uuid import UUID
 
 import aiofiles
@@ -86,7 +85,7 @@ class LocalFileStorage(BaseStorage):
             file_name += f"-{suffix}"
 
         src_path = self._dir / "uploading" / file_name
-        dst_path = self._dir / cast(str, as_.value) / file_name
+        dst_path = self._dir / as_.value / file_name
         logger.trace(f"Finalizing {src_path} as {as_.value}, moving to {dst_path}")
 
         await aiofiles.os.rename(src_path, dst_path)

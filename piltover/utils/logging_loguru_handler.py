@@ -1,6 +1,5 @@
 from __future__ import annotations
 import logging
-from typing import Self
 
 from loguru import logger
 
@@ -26,11 +25,13 @@ class InterceptHandler(logging.Handler):
 
     @classmethod
     def redirect_to_loguru(cls, logger_name: str, level: int = logging.INFO) -> logging.Handler:
-        if not isinstance(cls._instance, cls):
-            cls._instance = cls()
+        if isinstance(cls._instance, cls):
+            instance = cls._instance
+        else:
+            cls._instance = instance = cls()
 
         std_logger = logging.getLogger(logger_name)
         std_logger.setLevel(level)
-        std_logger.addHandler(cls._instance)
+        std_logger.addHandler(instance)
 
-        return cls._instance
+        return instance

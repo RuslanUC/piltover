@@ -19,8 +19,8 @@ from piltover.tl import ChannelAdminLogEventActionChangeTitle, ChannelAdminLogEv
     ChannelAdminLogEventActionToggleSlowMode, TLObject, ChannelAdminLogEventActionParticipantToggleAdmin, \
     ChannelParticipantBanned, ChannelParticipantAdmin, ChannelParticipantCreator, ChannelParticipant, \
     ChannelParticipantLeft, ChannelParticipantSelf, ChannelParticipantSelf_133, ChannelParticipantSelf_134, \
-    ChannelParticipant_133, ChannelAdminLogEventActionParticipantToggleBan, ChannelAdminLogEventActionChangeStickerSet, \
-    ChannelAdminLogEventActionChangeEmojiStickerSet
+    ChannelParticipant_133, ChannelAdminLogEventActionParticipantToggleBan, \
+    ChannelAdminLogEventActionChangeStickerSet, ChannelAdminLogEventActionChangeEmojiStickerSet
 from piltover.tl.base import ChannelAdminLogEvent, ChannelParticipantInst, ChannelParticipant as ChannelParticipantBase
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
@@ -152,11 +152,6 @@ class AdminLogEntry(Model):
             action = ChannelAdminLogEventActionChangeProfilePeerColor(
                 prev_value=PeerColor.deserialize(BytesIO(self.prev)),
                 new_value=PeerColor.deserialize(BytesIO(self.new)),
-            )
-        elif self.action is AdminLogEntryAction.EDIT_PEER_COLOR_PROFILE:
-            action = ChannelAdminLogEventActionChangeLinkedChat(
-                prev_value=self.old_channel_id or 0,
-                new_value=self.new_channel_id or 0,
             )
         elif self.action is AdminLogEntryAction.EDIT_HISTORY_TTL:
             action = ChannelAdminLogEventActionChangeHistoryTTL(

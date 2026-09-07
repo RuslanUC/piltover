@@ -947,8 +947,9 @@ async def invite_to_channel(request: InviteToChannel, user_id: int) -> InvitedUs
     peer_type, peer_channel_id = Peer.type_and_id_from_input_raise(user_id, request.channel, "CHANNEL_PRIVATE")
     if peer_type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
-    peer_with_channel = await Peer.get(channel_id=peer_channel_id).select_related("channel")
-    channel = cast(Channel, peer_with_channel.channel)
+    channel = await Channel.get_or_none(id=peer_channel_id, deleted=False)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
     participant = await channel.get_participant_raise(user_id)
     if not channel.user_has_permission(participant, ChatBannedRights.INVITE_USERS) and \

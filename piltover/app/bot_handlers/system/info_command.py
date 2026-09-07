@@ -45,9 +45,9 @@ class Info(BotInteractionHandler[NoneType, NoneType]):
         self._cached_entities: list[dict[str, Any]] | None = None
         self._lock = asyncio.Lock()
 
-    async def _get_info(self) -> None:
-        if self._cached_text is not None:
-            return
+    async def _get_info(self) -> tuple[str, list[dict[str, Any]]]:
+        if self._cached_text is not None and self._cached_entities is not None:
+            return self._cached_text, self._cached_entities
 
         proc = await asyncio.create_subprocess_exec(
             "git", "rev-parse", "HEAD",
@@ -80,7 +80,7 @@ class Info(BotInteractionHandler[NoneType, NoneType]):
         pubkey_fp_unsigned = request_ctx.get().worker.fingerprint
         pubkey_fp_signed = Long.read_bytes(Long.write(pubkey_fp_unsigned, signed=False), signed=True)
 
-        self._cached_text, self._cached_entities = _text.format(
+        self._cached_text, self._cached_entities = text, entities = _text.format(
             instance_name=APP_CONFIG.name,
             git_commit=git_commit,
             python_version=sys.version,
@@ -93,8 +93,10 @@ class Info(BotInteractionHandler[NoneType, NoneType]):
             pubkey_fp_unsigned=hex(pubkey_fp_unsigned),
         )
 
+        return text, entities
+
     async def _handler(self, peer: Peer, _1: MessageRef, _2: None) -> MessageRef:
         async with self._lock:
-            await self._get_info()
+            text, entities = await self._get_info()
 
-        return await send_bot_message(peer, self._cached_text, self._cached_entities)
+        return await send_bot_message(peer, text, entities)

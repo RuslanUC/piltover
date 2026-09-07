@@ -16,11 +16,11 @@ def get_recent_reactons_fallback_for_136(obj: tl.types.MessageReactions, _: Seri
         if not isinstance(peer, tl.types.PeerUser):
             continue
 
-        if isinstance(obj, tl.types.MessagePeerReaction_138):
-            reaction_emoji = obj.reaction
-        elif isinstance(obj, (tl.types.MessagePeerReaction_145, tl.types.MessagePeerReaction)):
-            if isinstance(obj.reaction, tl.types.ReactionEmoji):
-                reaction_emoji = obj.reaction.emoticon
+        if isinstance(reaction, tl.types.MessagePeerReaction_138):
+            reaction_emoji = reaction.reaction
+        elif isinstance(reaction, (tl.types.MessagePeerReaction_145, tl.types.MessagePeerReaction)):
+            if isinstance(reaction.reaction, tl.types.ReactionEmoji):
+                reaction_emoji = reaction.reaction.emoticon
             else:
                 continue
         else:

@@ -134,9 +134,6 @@ class PrivacyRule(Model):
         else:
             rules.append(PrivacyValueDisallowAll())
 
-        if not self.exceptions._fetched:
-            raise RuntimeError("Privacy rule exceptions must be prefetched")
-
         allow_users = []
         disallow_users = []
 

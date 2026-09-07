@@ -1,5 +1,5 @@
 from loguru import logger
-from taskiq import AsyncBroker, InMemoryBroker, TaskiqEvents
+from taskiq import AsyncBroker, InMemoryBroker, TaskiqEvents, TaskiqState
 
 from piltover._faster_taskiq_inmemory_result_backend import FasterInmemoryResultBackend
 from piltover.config import SYSTEM_CONFIG
@@ -45,10 +45,10 @@ def make_message_broker_from_config(broker: AsyncBroker | None) -> BaseMessageBr
         message_broker = RabbitMqMessageBroker(BrokerType.WRITE, rabbitmq_address)
 
     if broker is not None:
-        async def _broker_startup(*args, **kwargs) -> None:
+        async def _broker_startup(_: TaskiqState) -> None:
             await message_broker.startup()
 
-        async def _broker_shutdown(*args, **kwargs) -> None:
+        async def _broker_shutdown(_: TaskiqState) -> None:
             await message_broker.shutdown()
 
         broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, _broker_startup)
