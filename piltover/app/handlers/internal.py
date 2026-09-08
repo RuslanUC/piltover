@@ -84,9 +84,9 @@ async def delete_scheduled_message(request: DeleteScheduledMessage) -> TLObject:
         for message in to_delete:
             all_ids.append(message.id)
             if peer_is_channel(message.peer):
-                channel_messages[message.peer.channel].append(message.id)
+                channel_messages[message.peer.channel].append(message.local_id)
             elif peer_is_owned_min(message.peer):
-                regular_messages[message.peer.owner_id].append(message.id)
+                regular_messages[message.peer.owner_id].append(message.local_id)
             else:
                 raise Unreachable
 

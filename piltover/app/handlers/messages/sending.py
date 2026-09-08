@@ -331,7 +331,7 @@ async def get_updates_for_random_id(user_id: int, peer: Peer, random_id: int) ->
     updates = upd.UpdatesWithDefaults(
         updates=[
             UpdateMessageID(
-                id=message.id,
+                id=message.local_id,
                 random_id=random_id,
             ),
         ]
@@ -1278,7 +1278,7 @@ async def forward_messages(
     src_messages_query = Q(peer=from_peer, local_id__in=list(random_ids), content__type=MessageType.REGULAR)
     src_messages_query = append_channel_min_message_id_to_query_maybe(from_peer, src_messages_query, from_participant)
 
-    messages = await MessageRef.filter(src_messages_query).order_by("id").select_related(
+    messages = await MessageRef.filter(src_messages_query).order_by("local_id").select_related(
         *MessageRef.PREFETCH_FIELDS, "reply_to", "peer__channel", "content__author", "content__send_as_channel",
         "content__fwd_header__from_user", "content__fwd_header__from_chat", "content__fwd_header__from_channel",
     )

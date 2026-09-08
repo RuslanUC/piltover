@@ -188,7 +188,7 @@ async def get_messages_query_internal(
         if offset_id:
             query &= Q(local_id__lt=offset_id)
 
-        return MessageRef.filter(query).limit(limit).offset(add_offset).order_by("-id").select_related(
+        return MessageRef.filter(query).limit(limit).offset(add_offset).order_by("-local_id").select_related(
             *MessageRef.PREFETCH_MAYBECACHED,
         )
 
@@ -390,7 +390,7 @@ async def format_messages_internal(
         )
 
     if offset_id:
-        offset_id_offset = await query.filter(id__gte=offset_id).count()
+        offset_id_offset = await query.filter(local_id__gte=offset_id).count()
     else:
         offset_id_offset = 0
 
@@ -487,7 +487,7 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
 
     latest_before_max = cast(
         tuple[int, int, int] | None,
-        await query.order_by("-id").first().values_list("id", "local_id", "content_id"),
+        await query.order_by("-local_id").first().values_list("id", "local_id", "content_id"),
     )
     if latest_before_max is None:
         logger.debug(f"Ignoring ReadHistory, no messages before {max_id}")
@@ -499,15 +499,15 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
     max_id, max_local_id, content_id = latest_before_max
     logger.debug(f"Actual max_id is {max_id} (content id is {content_id})")
 
-    if not max_id or max_id <= dialog.last_read_message_id:
-        logger.debug(f"Ignoring ReadHistory, (actual) {max_id} <= {dialog.last_read_message_id}")
+    if not max_id or max_local_id <= dialog.last_read_message_id:
+        logger.debug(f"Ignoring ReadHistory, (actual) {max_local_id} <= {dialog.last_read_message_id}")
         return AffectedMessages(
             pts=state.pts,
             pts_count=0,
         )
 
     old_last_message_id = dialog.last_read_message_id
-    unread_count = await MessageRef.filter(peer=peer, id__gt=max_id).count()
+    unread_count = await MessageRef.filter(peer=peer, local_id__gt=max_local_id).count()
 
     if peer.type is PeerType.SELF:
         await peer.update_max_read_id(max_local_id)
@@ -1120,7 +1120,9 @@ async def get_search_results_positions(request: GetSearchResultsPositions, user_
 
     limit = max(1, min(100, request.limit))
 
-    messages = await MessageRef.filter(query).order_by("-id").limit(limit).values_list("local_id", "content__date")
+    messages = await MessageRef.filter(
+        query
+    ).order_by("-local_id").limit(limit).values_list("local_id", "content__date")
     positions = []
 
     for idx, (msg_id, msg_date) in enumerate(messages):

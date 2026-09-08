@@ -100,7 +100,7 @@ class Update(Model):
                     return None
 
                 return UpdateEditMessage(
-                    message=formatted_messages[self.message_id],
+                    message=formatted_messages[self.message.local_id],
                     pts=self.pts,
                     pts_count=1,
                 )
@@ -437,7 +437,7 @@ class Update(Model):
                 if self.message is None or self.message_id is None:
                     return None
 
-                return UpdateNewScheduledMessage(message=formatted_messages[self.message_id])
+                return UpdateNewScheduledMessage(message=formatted_messages[self.message.local_id])
 
             case UpdateType.DELETE_SCHEDULED_MESSAGE:
                 if self.peer is None:

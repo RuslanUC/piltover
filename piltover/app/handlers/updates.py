@@ -117,7 +117,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user_id: in
         )
 
     new_messages = [
-        all_messages[update.message_id]
+        all_messages[update.message.local_id]
         for update in new_updates
         if update.update_type is UpdateType.NEW_MESSAGE and update.message is not None
     ]
@@ -209,7 +209,7 @@ async def get_channel_difference(request: GetChannelDifference, user_id: int) ->
         )
         last_message = await MessageRef.filter(peer=peer).select_related(
             *MessageRef.PREFETCH_MAYBECACHED,
-        ).order_by("-id").first()
+        ).order_by("-local_id").first()
         if last_message:
             ucc = UsersChatsChannels()
             last_message_tl = await last_message.to_tl_maybecached(user_id)

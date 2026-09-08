@@ -14,12 +14,12 @@ class ChannelMessageToFormat(types.ChannelMessageToFormatInternal):
 
         peer = types.PeerChannel(channel_id=models.Channel.make_id_from(self.common.channel_id))
 
-        if ctx.values is None or self.common.id not in ctx.values.channel_messages:
+        if ctx.values is None or self.common.ref_id not in ctx.values.channel_messages:
             reactions = None
             mentioned = False
             media_unread = False
         else:
-            reactions, mentioned, media_unread = ctx.values.channel_messages[self.common.id]
+            reactions, mentioned, media_unread = ctx.values.channel_messages[self.common.ref_id]
 
         if isinstance(self.content, types.internal.MessageToFormatContent):
             message = types.Message(
@@ -76,4 +76,4 @@ class ChannelMessageToFormat(types.ChannelMessageToFormatInternal):
         return self._write(ctx)
 
     def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:
-        values.channel_messages.add(self.common.id)
+        values.channel_messages.add(self.common.ref_id)

@@ -38,15 +38,20 @@ async def _format_messages(user_id: int, messages: list[MessageRef]) -> Messages
 async def get_scheduled_history(request: GetScheduledHistory, user_id: int) -> Messages | MessagesNotModified:
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
-    message_ids = await MessageRef.filter(
-        peer=peer, scheduled_by_user_id=user_id,
-    ).order_by("content__scheduled_date").values_list("id", flat=True)
-    messages_hash = telegram_hash(cast(list[int], message_ids), 64)
+    message_ids = cast(
+        list[tuple[int, int]],
+        await MessageRef.filter(
+            peer=peer, scheduled_by_user_id=user_id,
+        ).order_by("content__scheduled_date").values_list("id", "local_id")
+    )
+    local_ids = [msg_id[1] for msg_id in message_ids]
+    messages_hash = telegram_hash(local_ids, 64)
 
     if messages_hash == request.hash:
         return MessagesNotModified(count=len(message_ids))
 
-    messages = await MessageRef.filter(id__in=message_ids).order_by("content__scheduled_date").select_related(
+    ids = [msg_id[0] for msg_id in message_ids]
+    messages = await MessageRef.filter(id__in=ids).order_by("content__scheduled_date").select_related(
         *MessageRef.PREFETCH_MAYBECACHED
     )
 
@@ -77,7 +82,7 @@ async def send_scheduled_messages(request: SendScheduledMessages, user_id: int) 
         scheduled_messages = await MessageRef.select_for_update(
             skip_locked=True, no_key=True,
         ).filter(
-            peer=peer, id__in=request.id[:100],
+            peer=peer, local_id__in=request.id[:100],
         ).select_related(
             "taskiqscheduledmessages", "peer", "peer__user", "content", "content__author",
             "content__media", "content__reply_to", "content__fwd_header", "content__post_info",

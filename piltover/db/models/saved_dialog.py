@@ -61,7 +61,7 @@ class SavedDialog(DialogBase):
             top_message = 0
             peer_id = dialog.peer_id
             if peer_id in messages and (peer_message := messages[peer_id][1]) is not None:
-                top_message = peer_message.id
+                top_message = peer_message.local_id
 
             tl.append(TLSavedDialog(
                 pinned=dialog.pinned_index is not None,

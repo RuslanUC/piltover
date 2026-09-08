@@ -331,7 +331,7 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
             cast(
                 object,
                 await MessageRef.filter(
-                    peer=peer, id__gte=participant.min_message_id,
+                    peer=peer, local_id__gte=participant.min_message_id,
                 ).annotate(min_id=Min("local_id")).first().values_list("min_id", flat=True)
             )
         )
@@ -904,19 +904,19 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
         return True
 
     unread_ids = cast(
-        tuple[int, int, int] | None,
+        tuple[int, int] | None,
         cast(
             object,
             await MessageRef.filter(
                 local_id__lte=request.max_id, peer=peer,
-            ).order_by("-id").first().values_list("id", "local_id", "content_id")
+            ).order_by("-local_id").first().values_list("local_id", "content_id")
         )
     )
     if not unread_ids:
         return True
 
-    unread_max_id, unread_max_local_id, content_id = unread_ids
-    unread_count = await MessageRef.filter(peer=peer, id__gt=unread_max_id).count()
+    unread_max_local_id, content_id = unread_ids
+    unread_count = await MessageRef.filter(peer=peer, local_id__gt=unread_max_local_id).count()
     await Dialog.filter(id=dialog.id).update(last_read_message_id=unread_max_local_id)
     await ReadHistoryChunk.create(user_id=user_id, peer=peer, read_content_id=content_id)
 

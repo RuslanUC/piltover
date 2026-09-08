@@ -71,7 +71,7 @@ class Dialog(DialogBase):
 
         fetch_unreads_for = []
         for dialog in dialogs:
-            if (dialog.peer.last_message_id or 0) > dialog.last_read_message_id:
+            if (dialog.peer.last_message_local_id or 0) > dialog.last_read_message_id:
                 fetch_unreads_for.append(dialog.id)
 
         unread_by_dialog = {}
@@ -253,7 +253,7 @@ class Dialog(DialogBase):
             top_message = 0
             peer_id = dialog.peer_id
             if peer_id in messages and (peer_message := messages[peer_id][1]) is not None:
-                top_message = peer_message.id
+                top_message = peer_message.local_id
 
             draft = None
             if peer_id in drafts:

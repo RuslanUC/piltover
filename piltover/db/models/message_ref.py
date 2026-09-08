@@ -113,6 +113,7 @@ class MessageRef(Model):
         indexes = (
             ("peer_id", "pinned"),
             ("peer_id", "id"),
+            ("peer_id", "local_id"),
             PartialIndexNonNull(
                 fields=("peer_id", "scheduled_by_user_id"),
                 non_null_fields=("scheduled_by_user_id",),
@@ -208,6 +209,7 @@ class MessageRef(Model):
         return ChannelMessageToFormatCommon(
             author_id=self.content.author_id,
             id=self.local_id,
+            ref_id=self.id,
             channel_id=self.peer.channel_id,
             from_scheduled=self.from_scheduled or self.content.scheduled_date is not None,
             pinned=self.pinned,
