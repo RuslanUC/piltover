@@ -311,8 +311,8 @@ async def _validate_message_entities(
 ) -> list[dict]:
     if not entities:
         return []
-    if len(entities) > 1024:
-        raise ErrorRpc(error_code=400, error_message="ENTITIES_TOO_LONG")
+    # NOTE: telegram stops processing entities completely after 100 entities
+    entities = entities[:100]
 
     fetch_users: list[tuple[InputUserBase, int]] = []
     check_emojis: list[tuple[int, int]] = []
@@ -331,7 +331,6 @@ async def _validate_message_entities(
             if text[start] != "+":
                 raise BOUNDS_ERROR
         elif isinstance(entity, InputMessageEntityMentionName):
-            # NOTE: Telegram stops processing mention entities completely after 100 entities
             # TODO: make mentions limit configurable
             if len(fetch_users) > 50:
                 continue

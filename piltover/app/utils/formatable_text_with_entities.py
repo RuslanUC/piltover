@@ -63,6 +63,7 @@ class Entity:
                 "length": self.length,
             }
 
+        # TODO: dont encode to utf16, use approach similar to process_message_entities
         add_offset = sum(
             len(fmt_options[fmt_name].encode("utf-16le")) // 2 * count - (len(fmt_name) + 2) * count
             for fmt_name, count in self.offset_depends.items()
