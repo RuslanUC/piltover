@@ -155,7 +155,9 @@ class Dialog(DialogBase):
             peer = peer_or_dialog
             dialog = await cls.get_or_create_hidden(user_id, peer_or_dialog)
 
-        unread_count = await models.MessageRef.filter(peer=peer, id__gt=dialog.last_read_message_id).count()
+        unread_count = await models.MessageRef.filter(
+            peer=peer, id__gt=dialog.last_read_message_id, scheduled_by_user_id_isnull=True,
+        ).count()
         if no_reactions:
             unread_reactions_count = 0
         else:

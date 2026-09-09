@@ -198,10 +198,9 @@ async def get_dialogs_internal(
     if issubclass(model, Dialog):
         query &= Q(visible=True)
 
-    # TODO: order_by probably should be -peer__last_message_date, -peer_id
     dialogs: list[DialogT] = await model.filter(
         query
-    ).limit(limit).order_by("-peer__last_message_id", "-id").select_related("peer")
+    ).limit(limit).order_by("-peer__last_message_date", "-peer__last_message_id", "-peer_id").select_related("peer")
     return await format_dialogs(model, tl_cls, tl_slice_cls, user_id, dialogs, allow_slicing, folder_id)
 
 
