@@ -42,7 +42,7 @@ class Dialog(DialogBase):
             ("owner_id", "peer_id"),
         )
         indexes = (
-            ("owner_id", "folder_id", "pinned_index", "visible"),
+            ("owner_id", "visible", "folder_id", "pinned_index"),
         )
 
     @classmethod

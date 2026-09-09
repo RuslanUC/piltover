@@ -1013,23 +1013,29 @@ class MessageRef(Model):
             else:
                 raise Unreachable
 
-        replies_stats = {
-            top_msg_id: (count, max_id)
-            for top_msg_id, count, max_id in await models.MessageRef.filter(
-                top_message_id__in=ids_to_get,
-            ).annotate(
-                count=Count("id"), max_id=Max("id"),
-            ).group_by(
-                "top_message_id"
-            ).values_list(
-                "top_message_id", "count", "max_id",
-            )
-        }
+        if ids_to_get:
+            replies_stats = {
+                top_msg_id: (count, max_id)
+                for top_msg_id, count, max_id in await models.MessageRef.filter(
+                    top_message_id__in=ids_to_get,
+                ).annotate(
+                    count=Count("id"), max_id=Max("id"),
+                ).group_by(
+                    "top_message_id"
+                ).values_list(
+                    "top_message_id", "count", "max_id",
+                )
+            }
+        else:
+            replies_stats = {}
 
-        discussion_channel_ids = dict(cast(
-            list[tuple[int, int]],
-            await models.MessageRef.filter(id__in=channel_ids_to_get).values_list("id", "peer__channel_id")
-        ))
+        if channel_ids_to_get:
+            discussion_channel_ids = dict(cast(
+                list[tuple[int, int]],
+                await models.MessageRef.filter(id__in=channel_ids_to_get).values_list("id", "peer__channel_id")
+            ))
+        else:
+            discussion_channel_ids = {}
 
         to_cache = []
         replies = []
