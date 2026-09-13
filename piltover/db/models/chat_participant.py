@@ -4,7 +4,6 @@ from datetime import datetime
 
 from tortoise import fields, Model
 from tortoise.expressions import Subquery
-from tortoise.functions import Count
 from tortoise.queryset import QuerySet
 
 from piltover.db import models
@@ -119,40 +118,12 @@ class ChatParticipant(Model):
     def common_chats_query(
             cls, user_id: int, other_user_id: int, max_id: int | None = None,
     ) -> QuerySet[ChatParticipant]:
-        """
-        query = ChatParticipant.filter(
-            user_id=user_id,
-            left=False,
-            chat_channel_id__in=Subquery(
-                ChatParticipant.filter(
-                    user_id=other_user_id,
-                    left=False,
-                ).values("chat_channel_id")
-            )
-        )
-
+        subquery = ChatParticipant.filter(user_id=other_user_id, left=False)
         if max_id is not None:
-            query = query.filter(chat_channel_id__lte=max_id)
-
-        return query
-        """
-
-        chat_query = ChatParticipant.filter(
-            user_id__in=[user_id, other_user_id], left=False,
-        ).annotate(
-            user_count=Count("user_id", distinct=True),
-        ).group_by(
-            "chat_channel_id"
-        ).filter(
-            user_count=2,
-        )
-
-        if max_id is not None:
-            chat_query = chat_query.filter(chat_channel_id__lte=max_id)
-
-        chat_query = chat_query.values("chat_channel_id")
+            subquery = subquery.filter(chat_channel_id__lte=max_id)
 
         return ChatParticipant.filter(
             user_id=user_id,
-            chat_channel_id__in=Subquery(chat_query)
+            left=False,
+            chat_channel_id__in=Subquery(subquery.values("chat_channel_id"))
         ).order_by("-chat_channel_id")
