@@ -270,7 +270,7 @@ async def get_pinned_dialogs(request: GetPinnedDialogs, user_id: int) -> PeerDia
         messages=dialogs_tl.messages,
         chats=dialogs_tl.chats,
         users=dialogs_tl.users,
-        state=await get_state_internal(user_id)
+        state=await get_state_internal(user_id),
     )
 
 
