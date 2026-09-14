@@ -1,11 +1,13 @@
+import hashlib
+import math
 import os
 
 import pytest
 from pyrogram.errors import FilePartSizeChanged, FilePartInvalid
 from pyrogram.raw.functions.messages import UploadMedia
-from pyrogram.raw.functions.upload import SaveBigFilePart, GetFile
+from pyrogram.raw.functions.upload import SaveBigFilePart, GetFile, SaveFilePart
 from pyrogram.raw.types import InputPeerSelf, InputMediaUploadedDocument, InputFileBig, MessageMediaDocument, Document, \
-    InputDocumentFileLocation
+    InputDocumentFileLocation, InputFile
 from pyrogram.raw.types.upload import File
 
 from tests.conftest import ClientFactory
@@ -116,6 +118,19 @@ async def test_save_big_file_part_size_changed(client_with_auth: ClientFactory) 
 
 
 @pytest.mark.asyncio
+async def test_save_big_file_first_part_size_changed(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+    file_id = client.rnd_id()
+
+    part0 = os.urandom(256 * 1024)
+    part1 = os.urandom(128 * 1024)
+
+    assert await client.invoke(SaveBigFilePart(file_id=file_id, file_part=1, file_total_parts=3, bytes=part1))
+    with pytest.raises(FilePartSizeChanged):
+        assert await client.invoke(SaveBigFilePart(file_id=file_id, file_part=0, file_total_parts=3, bytes=part0))
+
+
+@pytest.mark.asyncio
 async def test_save_big_file_extra_part(client_with_auth: ClientFactory) -> None:
     client = await client_with_auth(run=True)
     file_id = client.rnd_id()
@@ -171,3 +186,82 @@ async def test_save_big_file_part_size_changed_last_part(client_with_auth: Clien
     ))
     assert isinstance(file_result, File)
     assert file_result.bytes == part2_new
+
+
+@pytest.mark.parametrize(
+    ("part_sizes", "chunk_size"),
+    [
+        ((256, 256, 256, 128), 1024,),
+        ((256, 127, 128, 512), 1024,),
+        ((256, 127, 128, 512), 1023,),
+        ((512,) * 60, 1024,),
+    ],
+    ids=(
+        "regular",
+        "different sizes",
+        "different sizes, not 1kb-divisible",
+        "max size file",
+    )
+)
+@pytest.mark.asyncio
+async def test_save_file_part(client_with_auth: ClientFactory, part_sizes: tuple[int, ...], chunk_size: int) -> None:
+    client = await client_with_auth(run=True)
+    file_id = client.rnd_id()
+
+    parts = [
+        os.urandom(part_size * chunk_size)
+        for part_size in part_sizes
+    ]
+
+    for part_id, part_bytes in enumerate(parts):
+        assert await client.invoke(SaveFilePart(file_id=file_id, file_part=part_id, bytes=part_bytes))
+
+    file_content = b"".join(parts)
+    checksum = hashlib.md5(file_content).hexdigest()
+
+    result = await client.invoke(UploadMedia(
+        peer=InputPeerSelf(),
+        media=InputMediaUploadedDocument(
+            file=InputFile(id=file_id, parts=len(parts), name="idk.bin", md5_checksum=checksum),
+            mime_type="application/octet-stream",
+            attributes=[],
+        ),
+    ))
+
+    assert isinstance(result, MessageMediaDocument)
+    doc = result.document
+    assert isinstance(doc, Document)
+
+    one_mb_parts = math.ceil(len(file_content) / 1024 / 1024)
+
+    for part_num in range(one_mb_parts):
+        length = 1024 * 1024
+        offset = length * part_num
+
+        file_result = await client.invoke(GetFile(
+            location=InputDocumentFileLocation(
+                id=doc.id,
+                access_hash=doc.access_hash,
+                file_reference=doc.file_reference,
+                thumb_size="",
+            ),
+            offset=offset,
+            limit=length,
+            precise=False,
+        ))
+        assert isinstance(file_result, File)
+        assert file_result.bytes == file_content[offset:offset+length]
+
+
+@pytest.mark.asyncio
+async def test_save_file_part_max_size_exceeded(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+    file_id = client.rnd_id()
+
+    part = os.urandom(512 * 1024)
+
+    for part_id in range(60):
+        assert await client.invoke(SaveFilePart(file_id=file_id, file_part=part_id, bytes=part))
+
+    with pytest.raises(FilePartInvalid):
+        await client.invoke(SaveFilePart(file_id=file_id, file_part=60, bytes=part))

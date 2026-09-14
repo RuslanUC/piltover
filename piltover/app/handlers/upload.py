@@ -24,6 +24,16 @@ handler = MessageHandler("upload")
 
 
 @handler.on_request(SaveFilePart, ReqHandlerFlags.DONT_FETCH_USER)
+async def save_file_part(request: SaveFilePart, user_id: int) -> bool:
+    ...
+
+
+@handler.on_request(SaveBigFilePart, ReqHandlerFlags.DONT_FETCH_USER)
+async def save_big_file_part(request: SaveBigFilePart, user_id: int) -> bool:
+    ...
+
+
+@handler.on_request(SaveFilePart, ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(SaveBigFilePart, ReqHandlerFlags.DONT_FETCH_USER)
 async def save_file_part(request: SaveFilePart | SaveBigFilePart, user_id: int) -> bool:
     defaults = {}

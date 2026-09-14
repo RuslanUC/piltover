@@ -41,6 +41,10 @@ class _AppConfig(BaseModel):
     user_bio_limit: int = 100
     basic_group_admin_limit: int = 10
     channel_admin_limit: int = 25
+    upload_max_file_parts: int = 4000
+    upload_small_file_max_size_kb: int = 16384
+    upload_small_max_file_parts: int = 128
+    upload_small_enable_part_checks: bool = True
 
     hmac_key: Base64Bytes
     file_ref_expire_minutes: int = 60 * 4

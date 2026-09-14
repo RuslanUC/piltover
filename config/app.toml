@@ -46,6 +46,21 @@ user_bio_limit = 100
 basic_group_admin_limit = 10
 # Maximum amount of admins in channels and supergroups
 channel_admin_limit = 25
+# Maximum number of parts uploadable by any user. Maximum file size is (4000 / 2) megabytes
+upload_max_file_parts = 4000
+# Maximum size of small (i.e. one uploaded with upload.SaveFilePart) uploaded file.
+#  Telegram's documented limit is 10240; hard limit is 30720.
+#  Setting this to big number may lead to worst-case performance (due to increased I/O during upload finalization).
+upload_small_file_max_size_kb = 16384
+# Maximum size of small (i.e. ones uploaded with upload.SaveFilePart) uploaded file parts.
+#  It seems like Telegram does not have any limit for number of parts (apart from `upload_max_file_parts`),
+#   so if you need behavior as close to Telegram's as possible - set this to same value as `upload_max_file_parts`.
+#  Setting this to big number may lead to worst-case performance (due to increased I/O during upload finalization).
+upload_small_max_file_parts = 128
+# Enable part size checks for upload.SaveFilePart.
+#  Set this to false if you need behavior as close as possible to Telegram's.
+#  Setting this to false may lead to worst-case performance (due to increased I/O during upload finalization).
+upload_small_enable_part_checks = true
 
 # Key used to sign access hashes, file references, etc.
 #  Must be changed from default one and kept in secret!

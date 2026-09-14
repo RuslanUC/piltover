@@ -76,6 +76,7 @@ class LocalFileStorage(BaseStorage):
 
         async with aiofiles.open(file_path, "r+b") as f:
             await f.write(data)
+            await f.truncate(len(data))
 
     async def finalize_upload_as(
             self, file_id: UUID, as_: StorageType, parts_num: int, suffix: str | None = None,

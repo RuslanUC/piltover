@@ -93,3 +93,9 @@ from .message_unique_view import MessageUniqueView
 from .user_emoji_status import UserEmojiStatus
 from .telegram_user import TelegramUser
 from .protected_username import ProtectedUsername
+from .uploading_file_base import UploadingFileBase
+from .uploading_file_part_base import UploadingFilePartBase
+from .uploading_file_small import UploadingFileSmall
+from .uploading_file_big import UploadingFileBig
+from .uploading_file_small_part import UploadingFileSmallPart
+from .uploading_file_big_part import UploadingFileBigPart
