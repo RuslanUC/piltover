@@ -19,9 +19,9 @@ from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleKeyType, UserStatus, PushTokenType, PeerType, FileType
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
-    UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings, \
+    UserPasswordReset, SentCode, PhoneCodePurpose, Theme, Wallpaper, WallpaperSettings, \
     InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings, File, UserBackgroundEmojis, \
-    TaskIqScheduledDeleteUser, UserEmojiStatus, AuthKey, Channel, ProtectedUsername
+    TaskIqScheduledDeleteUser, UserEmojiStatus, AuthKey, Channel, ProtectedUsername, UploadingFileBase
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.session import SessionManager
@@ -31,8 +31,8 @@ from piltover.tl import PeerNotifySettings as TLPeerNotifySettings, GlobalPrivac
     EmojiListNotModified, PrivacyValueDisallowAll, String, EmojiStatusEmpty, EmojiStatus, \
     GlobalPrivacySettings_200, InputFile, InputFileBig, WallPaperSettings, Updates, InputNotifyPeer, InputNotifyUsers, \
     InputNotifyChats, InputNotifyBroadcasts, UpdateNotifySettings as UpdateUpdateNotifySettings
-from piltover.tl.base.account import ResetPasswordResult
 from piltover.tl.base import User as TLUserBase, WallPaper as TLWallPaperBase
+from piltover.tl.base.account import ResetPasswordResult
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
@@ -746,7 +746,7 @@ async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user_
     if not request.mime_type.startswith("image/"):
         raise ErrorRpc(error_code=400, error_message="WALLPAPER_MIME_INVALID")
 
-    uploaded_file = await UploadingFile.get_or_none(user_id=user_id, file_id=request.file.id)
+    uploaded_file = await UploadingFileBase.get_from_input(user_id, request.file)
     if uploaded_file is None:
         raise ErrorRpc(error_code=400, error_message="WALLPAPER_FILE_INVALID")
     if uploaded_file.mime is None or not uploaded_file.mime.startswith("image/"):

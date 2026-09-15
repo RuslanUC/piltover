@@ -10,6 +10,7 @@ from pyrogram.raw.types import InputPeerSelf, InputMediaUploadedDocument, InputF
     InputDocumentFileLocation, InputFile
 from pyrogram.raw.types.upload import File
 
+from piltover.config import APP_CONFIG
 from tests.conftest import ClientFactory
 
 
@@ -194,7 +195,7 @@ async def test_save_big_file_part_size_changed_last_part(client_with_auth: Clien
         ((256, 256, 256, 128), 1024,),
         ((256, 127, 128, 512), 1024,),
         ((256, 127, 128, 512), 1023,),
-        ((512,) * 60, 1024,),
+        ((512,) * 32, 1024,),
     ],
     ids=(
         "regular",
@@ -205,6 +206,8 @@ async def test_save_big_file_part_size_changed_last_part(client_with_auth: Clien
 )
 @pytest.mark.asyncio
 async def test_save_file_part(client_with_auth: ClientFactory, part_sizes: tuple[int, ...], chunk_size: int) -> None:
+    APP_CONFIG.upload_small_file_max_size_kb = 1024 * 16
+
     client = await client_with_auth(run=True)
     file_id = client.rnd_id()
 
@@ -260,8 +263,10 @@ async def test_save_file_part_max_size_exceeded(client_with_auth: ClientFactory)
 
     part = os.urandom(512 * 1024)
 
-    for part_id in range(60):
+    parts_num = APP_CONFIG.upload_small_file_max_size_kb * 2 // 1024
+
+    for part_id in range(parts_num):
         assert await client.invoke(SaveFilePart(file_id=file_id, file_part=part_id, bytes=part))
 
     with pytest.raises(FilePartInvalid):
-        await client.invoke(SaveFilePart(file_id=file_id, file_part=60, bytes=part))
+        await client.invoke(SaveFilePart(file_id=file_id, file_part=parts_num, bytes=part))

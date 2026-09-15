@@ -16,10 +16,10 @@ from piltover.app.utils.utils import process_message_entities, process_reply_mar
 from piltover.config import APP_CONFIG, DICE_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, FileType, ChatAdminRights
-from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
+from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, \
     SavedDialog, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem, Channel, \
-    SlowmodeLastMessage, MessageRef, MessageContent, Username, MessageFwdHeader
+    SlowmodeLastMessage, MessageRef, MessageContent, Username, MessageFwdHeader, UploadingFileBase
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.db.models.peer import peer_is_owned_min, peer_is_user, peer_is_channel, peer_is_chat
 from piltover.enums import ReqHandlerFlags
@@ -813,10 +813,10 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
 async def _get_media_thumb(
         user_id: int, media: InputMediaUploadedDocument | InputMediaUploadedDocument_133,
 ) -> bytes | None:
-    if media.thumb is None:
+    if not isinstance(media.thumb, (InputFile, InputFileBig)):
         return None
 
-    uploaded_thumb = await UploadingFile.get_or_none(user_id=user_id, file_id=media.thumb.id)
+    uploaded_thumb = await UploadingFileBase.get_from_input(user_id, media.thumb)
     if uploaded_thumb is None \
             or uploaded_thumb.mime is None \
             or not uploaded_thumb.mime.startswith("image/"):
@@ -881,7 +881,9 @@ async def _process_media(user: User, media: TLInputMediaBase) -> MessageMedia:
         media_type = MediaType.DICE
 
     if isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedDocument_133, InputMediaUploadedPhoto)):
-        uploaded_file = await UploadingFile.get_or_none(user=user, file_id=media.file.id)
+        if not isinstance(media.file, (InputFile, InputFileBig)):
+            raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
+        uploaded_file = await UploadingFileBase.get_from_input(user.id, media.file)
         if uploaded_file is None:
             raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
 

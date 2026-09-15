@@ -12,8 +12,9 @@ from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights, FileType, \
     UserStatus, AdminLogEntryAction
-from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, PrivacyRule, \
-    ChatInviteRequest, ChatInvite, Channel, Dialog, Presence, AdminLogEntry, MessageRef, MessageContent
+from piltover.db.models import User, Peer, Chat, File, ChatParticipant, PrivacyRule, \
+    ChatInviteRequest, ChatInvite, Channel, Dialog, Presence, AdminLogEntry, MessageRef, MessageContent, \
+    UploadingFileBase
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
@@ -22,7 +23,7 @@ from piltover.tl import MissingInvitee, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, MessageActionChatCreate, \
     MessageActionChatEditTitle, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionChatMigrateTo, MessageActionChannelMigrateFrom, ChatOnlines, \
-    MessageActionChatEditPhoto, InputChatUploadedPhoto_133
+    MessageActionChatEditPhoto, InputChatUploadedPhoto_133, InputFile, InputFileBig
 from piltover.tl.base import InputChatPhoto as TLInputChatPhotoBase, Photo as TLPhotoBase
 from piltover.tl.base.messages import Chats as ChatsBase
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
@@ -244,9 +245,9 @@ async def resolve_input_chat_photo(
             raise ErrorRpc(error_code=400, error_message="PHOTO_INVALID")
         return await File.get_or_none(id=photo.id)
     elif isinstance(photo, (InputChatUploadedPhoto, InputChatUploadedPhoto_133)):
-        if photo.file is None:
-            raise ErrorRpc(error_code=400, error_message="PHOTO_FILE_MISSING")
-        uploaded_file = await UploadingFile.get_or_none(user_id=user_id, file_id=photo.file.id)
+        if not isinstance(photo.file, (InputFile, InputFileBig)):
+            raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
+        uploaded_file = await UploadingFileBase.get_from_input(user_id, photo.file)
         if uploaded_file is None:
             raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
         if uploaded_file.mime is None or not uploaded_file.mime.startswith("image/"):

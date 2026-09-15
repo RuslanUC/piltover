@@ -14,3 +14,6 @@ class UploadingFilePartBase(Model):
     size: int = fields.IntField()
 
     file: models.UploadingFileBase
+
+    class Meta:
+        abstract = True

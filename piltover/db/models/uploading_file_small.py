@@ -6,6 +6,7 @@ from piltover.db.models import UploadingFileBase
 
 class UploadingFileSmall(UploadingFileBase):
     PART_CLASS = models.UploadingFileSmallPart
+    IS_SMALL = True
 
     class Meta:
         unique_together = (

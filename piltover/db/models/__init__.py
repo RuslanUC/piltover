@@ -18,7 +18,6 @@ from .sentcode import SentCode, PhoneCodePurpose
 from .srp_session import SrpSession
 from .state import State
 from .update import Update
-from .uploading_file import UploadingFile, UploadingFilePart
 from .user import User
 from .user_authorization import UserAuthorization
 from .user_password import UserPassword
@@ -95,7 +94,7 @@ from .telegram_user import TelegramUser
 from .protected_username import ProtectedUsername
 from .uploading_file_base import UploadingFileBase
 from .uploading_file_part_base import UploadingFilePartBase
-from .uploading_file_small import UploadingFileSmall
-from .uploading_file_big import UploadingFileBig
 from .uploading_file_small_part import UploadingFileSmallPart
 from .uploading_file_big_part import UploadingFileBigPart
+from .uploading_file_small import UploadingFileSmall
+from .uploading_file_big import UploadingFileBig

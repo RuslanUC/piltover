@@ -8,8 +8,8 @@ from tortoise.transactions import in_transaction
 import piltover.app.utils.updates_manager as upd
 from piltover.context import request_ctx
 from piltover.db.enums import SecretUpdateType, FileType, PeerType
-from piltover.db.models import Peer, EncryptedChat, UserAuthorization, SecretUpdate, EncryptedFile, UploadingFile, File, \
-    User
+from piltover.db.models import Peer, EncryptedChat, UserAuthorization, SecretUpdate, EncryptedFile, File, \
+    User, UploadingFileSmall, UploadingFileBig
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import InputUser, InputUserFromMessage, EncryptedChatDiscarded, EncryptedFileEmpty, \
@@ -156,7 +156,13 @@ async def _resolve_file(input_file: TLInputEncryptedFileBase, user_id: int) -> E
     ctx = request_ctx.get()
 
     if isinstance(input_file, (InputEncryptedFileUploaded, InputEncryptedFileBigUploaded)):
-        uploaded_file = await UploadingFile.get_or_none(user_id=user_id, file_id=input_file.id)
+        if isinstance(input_file, InputEncryptedFileUploaded):
+            uploaded_file = await UploadingFileSmall.get_or_none(user_id=user_id, file_id=input_file.id)
+        elif isinstance(input_file, InputEncryptedFileBigUploaded):
+            uploaded_file = await UploadingFileBig.get_or_none(user_id=user_id, file_id=input_file.id)
+        else:
+            raise Unreachable
+
         if uploaded_file is None:
             raise ErrorRpc(error_code=400, error_message="FILE_EMTPY")
         file = await uploaded_file.finalize_upload(

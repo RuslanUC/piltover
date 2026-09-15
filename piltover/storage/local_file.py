@@ -59,10 +59,32 @@ class LocalFileStorage(BaseStorage):
         self._documents = LocalFileStorageDocuments(files_dir)
         self._photos = LocalFileStoragePhotos(files_dir)
 
-        (self._dir / "uploading").mkdir(parents=True, exist_ok=True)
+        uploading_dir = self._dir / "uploading"
+        self._uploading_small_dir = uploading_dir / "small"
+        self._uploading_big_dir = uploading_dir / "big"
+        self._uploading_small_dir.mkdir(parents=True, exist_ok=True)
+        self._uploading_big_dir.mkdir(parents=True, exist_ok=True)
 
-    async def save_part(
+    async def save_big_part(
             self, file_id: UUID, part_id: int, data: StorageBuffer, is_last: bool, suffix: str | None = None,
+    ) -> None:
+        # TODO: rewrite, write into one file instead of different parts
+        file_name = str(file_id)
+        if suffix is not None:
+            file_name += f"-{suffix}"
+
+        if part_id > 0:
+            file_name += f".part{part_id}"
+
+        file_path = self._uploading_big_dir / file_name
+        file_path.touch(exist_ok=True)
+
+        async with aiofiles.open(file_path, "r+b") as f:
+            await f.write(data)
+            await f.truncate(len(data))
+
+    async def save_small_part(
+            self, file_id: UUID, part_id: int, data: StorageBuffer, suffix: str | None = None,
     ) -> None:
         file_name = str(file_id)
         if suffix is not None:
@@ -71,21 +93,22 @@ class LocalFileStorage(BaseStorage):
         if part_id > 0:
             file_name += f".part{part_id}"
 
-        file_path = self._dir / "uploading" / file_name
+        file_path = self._uploading_small_dir / file_name
         file_path.touch(exist_ok=True)
 
         async with aiofiles.open(file_path, "r+b") as f:
             await f.write(data)
             await f.truncate(len(data))
 
-    async def finalize_upload_as(
+    async def finalize_big_upload_as(
             self, file_id: UUID, as_: StorageType, parts_num: int, suffix: str | None = None,
     ) -> None:
+        # TODO: rewrite
         file_name = str(file_id)
         if suffix is not None:
             file_name += f"-{suffix}"
 
-        src_path = self._dir / "uploading" / file_name
+        src_path = self._uploading_big_dir / file_name
         dst_path = self._dir / as_.value / file_name
         logger.trace(f"Finalizing {src_path} as {as_.value}, moving to {dst_path}")
 
@@ -97,7 +120,31 @@ class LocalFileStorage(BaseStorage):
         async with aiofiles.open(dst_path, "r+b") as f_out:
             await f_out.seek(0, os.SEEK_END)
             for part_id in range(1, parts_num):
-                append_filename = self._dir / "uploading" / f"{file_name}.part{part_id}"
+                append_filename = self._uploading_big_dir / f"{file_name}.part{part_id}"
+                async with aiofiles.open(append_filename, "rb") as f_in:
+                    await f_out.write(await f_in.read())
+                await aiofiles.os.remove(append_filename)
+
+    async def finalize_small_upload_as(
+            self, file_id: UUID, as_: StorageType, parts_num: int, suffix: str | None = None,
+    ) -> None:
+        file_name = str(file_id)
+        if suffix is not None:
+            file_name += f"-{suffix}"
+
+        src_path = self._uploading_small_dir / file_name
+        dst_path = self._dir / as_.value / file_name
+        logger.trace(f"Finalizing {src_path} as {as_.value}, moving to {dst_path}")
+
+        await aiofiles.os.rename(src_path, dst_path)
+
+        if parts_num <= 1:
+            return
+
+        async with aiofiles.open(dst_path, "r+b") as f_out:
+            await f_out.seek(0, os.SEEK_END)
+            for part_id in range(1, parts_num):
+                append_filename = self._uploading_small_dir / f"{file_name}.part{part_id}"
                 async with aiofiles.open(append_filename, "rb") as f_in:
                     await f_out.write(await f_in.read())
                 await aiofiles.os.remove(append_filename)

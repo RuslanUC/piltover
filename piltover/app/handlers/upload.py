@@ -5,11 +5,15 @@ from uuid import UUID
 import magic
 from loguru import logger
 from tortoise.expressions import Q
+from tortoise.functions import Sum
+from tortoise.transactions import in_transaction
 
 from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
+from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, FileType
-from piltover.db.models import UploadingFile, UploadingFilePart, File, Peer, Stickerset
+from piltover.db.models import File, Peer, Stickerset, UploadingFileSmall, UploadingFileSmallPart, UploadingFileBig, \
+    UploadingFileBigPart
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation, \
@@ -25,71 +29,126 @@ handler = MessageHandler("upload")
 
 @handler.on_request(SaveFilePart, ReqHandlerFlags.DONT_FETCH_USER)
 async def save_file_part(request: SaveFilePart, user_id: int) -> bool:
-    ...
+    size = len(request.bytes_)
+
+    if request.file_part >= APP_CONFIG.upload_small_max_file_parts:
+        raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
+    if size > 524288:
+        raise ErrorRpc(error_code=400, error_message="FILE_PART_TOO_BIG")
+    if size == 0:
+        raise ErrorRpc(error_code=400, error_message="FILE_PART_EMPTY")
+
+    mime = None
+    if request.file_part == 0:
+        mime = magic.from_buffer(request.bytes_[:4096], mime=True)
+        if mime == "application/octet-stream":
+            mime = None
+        logger.trace(f"Resolved file mime type from first part: {mime!r}")
+
+    with measure_time("UploadingFileSmall.get_or_create(...)"):
+        file, created = await UploadingFileSmall.get_or_create(user_id=user_id, file_id=request.file_id, defaults={
+            "mime": mime,
+        })
+        if not created and request.file_part == 0 and mime is not None:
+            await UploadingFileSmall.filter(id=file.id).update(mime=mime)
+            file.mime = mime
+
+    if not created:
+        total_size = cast(
+            int,
+            await UploadingFileSmallPart.filter(
+                file=file,
+            ).annotate(total_size=Sum("size")).first().values_list("total_size", flat=True)
+        )
+        if (total_size + size) > APP_CONFIG.upload_small_file_max_size_kb * 1024:
+            raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
+
+    with measure_time("UploadingFileSmallPart.get_or_create"):
+        await UploadingFileSmallPart.update_or_create(
+            file=file, part_id=request.file_part, defaults={"size": size},
+        )
+
+    storage = request_ctx.get().storage
+    with measure_time("storage.save_part(...)"):
+        await storage.save_small_part(file.physical_id, request.file_part, request.bytes_)
+
+    return True
 
 
 @handler.on_request(SaveBigFilePart, ReqHandlerFlags.DONT_FETCH_USER)
 async def save_big_file_part(request: SaveBigFilePart, user_id: int) -> bool:
-    ...
+    size = len(request.bytes_)
 
+    if request.file_part >= APP_CONFIG.upload_max_file_parts:
+        raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
+    if size > 524288:
+        raise ErrorRpc(error_code=400, error_message="FILE_PART_TOO_BIG")
+    if request.file_total_parts == 0:  # TODO: is this a correct error?
+        raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
 
-@handler.on_request(SaveFilePart, ReqHandlerFlags.DONT_FETCH_USER)
-@handler.on_request(SaveBigFilePart, ReqHandlerFlags.DONT_FETCH_USER)
-async def save_file_part(request: SaveFilePart | SaveBigFilePart, user_id: int) -> bool:
-    defaults = {}
-    if isinstance(request, SaveBigFilePart):
-        defaults["total_parts"] = request.file_total_parts
+    defaults: dict = {
+        "total_parts": request.file_total_parts,
+    }
 
     mime = None
-    if request.file_part == 0 and request.bytes_:
+    if request.file_part == 0:
         mime = magic.from_buffer(request.bytes_[:4096], mime=True)
         if mime == "application/octet-stream":
             mime = None
         defaults["mime"] = mime
         logger.trace(f"Resolved file mime type from first part: {mime!r}")
 
-    with measure_time("UploadingFile.get_or_create(...)"):
-        file, created = await UploadingFile.get_or_create(user_id=user_id, file_id=request.file_id, defaults=defaults)
-        if not created and request.file_part == 0 and mime is not None:
-            file.mime = mime
-            await file.save(update_fields=["mime"])
+    async with in_transaction():
+        update_fields = {}
+        with measure_time("UploadingFile.get_or_create(...)"):
+            file, created = await UploadingFileBig.get_or_create(
+                user_id=user_id, file_id=request.file_id, defaults=defaults,
+            )
+            if not created and request.file_part == 0 and mime is not None:
+                update_fields["mime"] = mime
+                file.mime = mime
 
-    with measure_time("<get last part>"):
-        last_part_id = cast(
-            int | None,
-            await UploadingFilePart.filter(file=file).order_by("-part_id").first().values_list("part_id", flat=True)
-        )
+        if file.total_parts > 0:
+            if size == 0:
+                raise ErrorRpc(error_code=400, error_message="FILE_PART_EMPTY")
+            if file.total_parts != request.file_total_parts or request.file_part >= file.total_parts:
+                raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
+            is_last = request.file_part == (file.total_parts - 1)
+        else:
+            is_last = request.file_total_parts != -1
+            total_parts = request.file_total_parts
+            if size > 0:
+                total_parts -= 1
+            if is_last and request.file_part != total_parts:
+                raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
+            if not is_last and size == 0:
+                raise ErrorRpc(error_code=400, error_message="FILE_PART_EMPTY")
+            if is_last:
+                update_fields["total_parts"] = total_parts
+                file.total_parts = total_parts
 
-    if file.total_parts > 0 and isinstance(request, SaveFilePart):
-        raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
-    if file.total_parts > 0 and (file.total_parts != request.file_total_parts or request.file_part >= file.total_parts):
-        raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
+        if not is_last and file.part_size == 0:
+            update_fields["part_size"] = size
+            file.part_size = size
+        if update_fields:
+            await UploadingFileBig.filter(id=file.id).update(**update_fields)
 
-    size = len(request.bytes_)
-    with measure_time("<check existing part>"):
-        existing_part = await UploadingFilePart.get_or_none(file=file, part_id=request.file_part).only("size")
-        if existing_part is not None:
-            if size == existing_part.size:
-                return True
-            raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
-    maybe_last = size % 1024 != 0 or 524288 % size != 0
-    if maybe_last and last_part_id is not None and last_part_id >= request.file_part:
+    if not is_last and size != file.part_size:
+        raise ErrorRpc(error_code=400, error_message="FILE_PART_SIZE_CHANGED")
+    if not is_last and (size % 1024 != 0 or 524288 % size != 0):
         raise ErrorRpc(error_code=400, error_message="FILE_PART_SIZE_INVALID")
-    if size > 524288:
-        raise ErrorRpc(error_code=400, error_message="FILE_PART_TOO_BIG")
-    if size == 0:
-        raise ErrorRpc(error_code=400, error_message="FILE_PART_EMPTY")
 
-    with measure_time("UploadingFilePart.get_or_create"):
-        part, created = await UploadingFilePart.get_or_create(file=file, part_id=request.file_part, defaults={"size": size})
-    if not created:
-        if part.size == size:
-            return True
-        raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
+    async with in_transaction():
+        with measure_time("UploadingFilePart.get_or_create"):
+            part, created = await UploadingFileBigPart.get_or_create(
+                file=file, part_id=request.file_part, defaults={"size": size},
+            )
+            if not created and is_last and part.size != size:
+                await UploadingFileBigPart.filter(id=part.id).update(size=size)
 
     storage = request_ctx.get().storage
     with measure_time("storage.save_part(...)"):
-        await storage.save_part(file.physical_id, request.file_part, request.bytes_, maybe_last)
+        await storage.save_big_part(file.physical_id, request.file_part, request.bytes_, is_last)
 
     return True
 

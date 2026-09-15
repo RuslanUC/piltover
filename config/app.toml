@@ -57,10 +57,6 @@ upload_small_file_max_size_kb = 16384
 #   so if you need behavior as close to Telegram's as possible - set this to same value as `upload_max_file_parts`.
 #  Setting this to big number may lead to worst-case performance (due to increased I/O during upload finalization).
 upload_small_max_file_parts = 128
-# Enable part size checks for upload.SaveFilePart.
-#  Set this to false if you need behavior as close as possible to Telegram's.
-#  Setting this to false may lead to worst-case performance (due to increased I/O during upload finalization).
-upload_small_enable_part_checks = true
 
 # Key used to sign access hashes, file references, etc.
 #  Must be changed from default one and kept in secret!

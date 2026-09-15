@@ -5,7 +5,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleKeyType, FileType, PeerType, MessageType
-from piltover.db.models import User, UserPhoto, Peer, UploadingFile, PrivacyRule, Bot, Contact, File
+from piltover.db.models import User, UserPhoto, Peer, PrivacyRule, Bot, Contact, File, UploadingFileBase
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputPhoto, InputPhotoEmpty, PhotoEmpty, LongVector, InputFile, InputFileBig, \
@@ -76,12 +76,12 @@ async def _current_user_or_bot(input_bot: TLInputUserBase | None, user: User) ->
 
 @handler.on_request(UploadProfilePhoto)
 async def upload_profile_photo(request: UploadProfilePhoto, user: User):
-    if request.file is None:
+    if not isinstance(request.file, (InputFile, InputFileBig)):
         raise ErrorRpc(error_code=400, error_message="PHOTO_FILE_MISSING")
 
     target_user = await _current_user_or_bot(request.bot, user)
 
-    uploaded_file = await UploadingFile.get_or_none(user=user, file_id=request.file.id)
+    uploaded_file = await UploadingFileBase.get_from_input(user.id, request.file)
     if uploaded_file is None:
         raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
     if uploaded_file.mime is None or not uploaded_file.mime.startswith("image/"):
@@ -212,7 +212,7 @@ async def upload_contact_profile_photo(request: UploadContactProfilePhoto, user_
         if not isinstance(request.file, (InputFile, InputFileBig)):
             raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
 
-        uploaded_file = await UploadingFile.get_or_none(user_id=user_id, file_id=request.file.id)
+        uploaded_file = await UploadingFileBase.get_from_input(user_id, request.file)
         if uploaded_file is None:
             raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
         if uploaded_file.mime is None or not uploaded_file.mime.startswith("image/"):

@@ -11,6 +11,7 @@ from piltover.db.enums import FileType
 from piltover.exceptions import ErrorRpc
 from piltover.storage import BaseStorage
 from piltover.storage.base import StorageType
+from piltover.tl import InputFile, InputFileBig
 from piltover.utils.debug import measure_time
 
 
@@ -23,9 +24,19 @@ class UploadingFileBase(Model):
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
 
     PART_CLASS: models.UploadingFilePartBase
+    IS_SMALL: bool
 
     class Meta:
         abstract = True
+
+    @staticmethod
+    async def get_from_input(user_id: int, input_file: InputFile | InputFileBig) -> UploadingFileBase | None:
+        if isinstance(input_file, InputFile):
+            return await models.UploadingFileSmall.get_or_none(user_id=user_id, file_id=input_file.id)
+        elif isinstance(input_file, InputFileBig):
+            return await models.UploadingFileBig.get_or_none(user_id=user_id, file_id=input_file.id)
+        else:
+            raise TypeError("Expected either InputFile or InputFileBig")
 
     async def finalize_upload(
             self, storage: BaseStorage, fallback_mime: str, attributes: list | None = None,
@@ -65,8 +76,11 @@ class UploadingFileBase(Model):
             finalize_as = StorageType.DOCUMENT
             component = storage.documents
 
-        with measure_time("storage.finalize_upload_as"):
-            await storage.finalize_upload_as(self.physical_id, finalize_as, len(parts))
+        with measure_time("storage.finalize_*_upload_as"):
+            if self.IS_SMALL:
+                await storage.finalize_small_upload_as(self.physical_id, finalize_as, len(parts))
+            else:
+                await storage.finalize_big_upload_as(self.physical_id, finalize_as, len(parts))
 
         if not force_fallback_mime and self.mime is not None and self.mime.startswith("video/"):
             from piltover.app.utils.utils import extract_video_metadata

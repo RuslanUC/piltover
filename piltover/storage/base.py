@@ -23,13 +23,25 @@ class BaseStorageComponent(ABC):
 
 class BaseStorage(ABC):
     @abstractmethod
-    async def save_part(
+    async def save_big_part(
             self, file_id: UUID, part_id: int, data: StorageBuffer, is_last: bool, suffix: str | None = None,
     ) -> None:
         ...
 
     @abstractmethod
-    async def finalize_upload_as(
+    async def save_small_part(
+            self, file_id: UUID, part_id: int, data: StorageBuffer, suffix: str | None = None,
+    ) -> None:
+        ...
+
+    @abstractmethod
+    async def finalize_big_upload_as(
+            self, file_id: UUID, as_: StorageType, parts_num: int, suffix: str | None = None,
+    ) -> None:
+        ...
+
+    @abstractmethod
+    async def finalize_small_upload_as(
             self, file_id: UUID, as_: StorageType, parts_num: int, suffix: str | None = None,
     ) -> None:
         ...

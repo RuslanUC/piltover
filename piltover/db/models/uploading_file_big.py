@@ -9,6 +9,7 @@ from piltover.exceptions import ErrorRpc
 
 class UploadingFileBig(UploadingFileBase):
     PART_CLASS = models.UploadingFileBigPart
+    IS_SMALL = False
 
     total_parts: int = fields.IntField(default=0)
     part_size: int = fields.IntField(default=0)
