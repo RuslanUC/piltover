@@ -87,6 +87,8 @@ async def save_big_file_part(request: SaveBigFilePart, user_id: int) -> bool:
         raise ErrorRpc(error_code=400, error_message="FILE_PART_TOO_BIG")
     if request.file_total_parts == 0:  # TODO: is this a correct error?
         raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
+    if size == 0:
+        raise ErrorRpc(error_code=400, error_message="FILE_PART_EMPTY")
 
     defaults: dict = {
         "total_parts": request.file_total_parts,
@@ -111,20 +113,14 @@ async def save_big_file_part(request: SaveBigFilePart, user_id: int) -> bool:
                 file.mime = mime
 
         if file.total_parts > 0:
-            if size == 0:
-                raise ErrorRpc(error_code=400, error_message="FILE_PART_EMPTY")
             if file.total_parts != request.file_total_parts or request.file_part >= file.total_parts:
                 raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
             is_last = request.file_part == (file.total_parts - 1)
         else:
-            is_last = request.file_total_parts != -1
             total_parts = request.file_total_parts
-            if size > 0:
-                total_parts -= 1
+            is_last = total_parts != -1
             if is_last and request.file_part != total_parts:
                 raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
-            if not is_last and size == 0:
-                raise ErrorRpc(error_code=400, error_message="FILE_PART_EMPTY")
             if is_last:
                 update_fields["total_parts"] = total_parts
                 file.total_parts = total_parts
