@@ -80,7 +80,8 @@ async def save_file_part(request: SaveFilePart, user_id: int) -> bool:
 async def save_big_file_part(request: SaveBigFilePart, user_id: int) -> bool:
     size = len(request.bytes_)
 
-    if request.file_part < 0 or request.file_part >= APP_CONFIG.upload_max_file_parts:
+    if request.file_part < 0 or request.file_part >= APP_CONFIG.upload_max_file_parts \
+            or request.file_total_parts > APP_CONFIG.upload_max_file_parts:
         raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
     if size > 524288:
         raise ErrorRpc(error_code=400, error_message="FILE_PART_TOO_BIG")

@@ -366,7 +366,20 @@ async def test_save_big_file_part_too_big(client_with_auth: ClientFactory) -> No
 
     with pytest.raises(FilePartInvalid):
         await client.invoke(SaveBigFilePart(
-            file_id=file_id, file_part=APP_CONFIG.upload_small_max_file_parts, file_total_parts=3, bytes=part,
+            file_id=file_id, file_part=APP_CONFIG.upload_max_file_parts, file_total_parts=3, bytes=part,
+        ))
+
+
+@pytest.mark.asyncio
+async def test_save_big_file_total_parts_too_big(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+    file_id = client.rnd_id()
+
+    part = os.urandom(1024)
+
+    with pytest.raises(FilePartInvalid):
+        await client.invoke(SaveBigFilePart(
+            file_id=file_id, file_part=0, file_total_parts=APP_CONFIG.upload_max_file_parts + 1, bytes=part,
         ))
 
 
