@@ -370,5 +370,16 @@ async def test_save_big_file_part_too_big(client_with_auth: ClientFactory) -> No
         ))
 
 
+@pytest.mark.asyncio
+async def test_save_file_part_reupload_only_part(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+    file_id = client.rnd_id()
+
+    part = os.urandom(1024)
+
+    await client.invoke(SaveFilePart(file_id=file_id, file_part=0, bytes=part))
+    await client.invoke(SaveFilePart(file_id=file_id, file_part=0, bytes=part))
+
+
 # TODO: add tests for streaming uploads
 # TODO: add tests for uploads where InputFile.parts/InputFileBig.parts is less than actual number of uploaded parts
