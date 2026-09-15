@@ -78,6 +78,7 @@ class UploadingFileBase(Model):
 
         with measure_time("storage.finalize_*_upload_as"):
             if self.IS_SMALL:
+                # TODO: check md5
                 await storage.finalize_small_upload_as(self.physical_id, finalize_as, len(parts))
             else:
                 await storage.finalize_big_upload_as(self.physical_id, finalize_as, len(parts))

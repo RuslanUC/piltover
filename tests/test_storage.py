@@ -324,5 +324,51 @@ async def test_save_file_part_reupload_smaller_part_near_limit(client_with_auth:
         assert chunk == file_content[offset:offset + length]
 
 
+@pytest.mark.asyncio
+async def test_save_file_part_negative_part_id(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+    file_id = client.rnd_id()
+
+    part = os.urandom(1024)
+
+    with pytest.raises(FilePartInvalid):
+        await client.invoke(SaveFilePart(file_id=file_id, file_part=-1, bytes=part))
+
+
+@pytest.mark.asyncio
+async def test_save_file_part_too_big(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+    file_id = client.rnd_id()
+
+    part = os.urandom(1024)
+
+    with pytest.raises(FilePartInvalid):
+        await client.invoke(SaveFilePart(file_id=file_id, file_part=APP_CONFIG.upload_small_max_file_parts, bytes=part))
+
+
+@pytest.mark.asyncio
+async def test_save_big_file_part_negative_part_id(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+    file_id = client.rnd_id()
+
+    part = os.urandom(1024)
+
+    with pytest.raises(FilePartInvalid):
+        await client.invoke(SaveBigFilePart(file_id=file_id, file_part=-1, file_total_parts=3, bytes=part))
+
+
+@pytest.mark.asyncio
+async def test_save_big_file_part_too_big(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+    file_id = client.rnd_id()
+
+    part = os.urandom(1024)
+
+    with pytest.raises(FilePartInvalid):
+        await client.invoke(SaveBigFilePart(
+            file_id=file_id, file_part=APP_CONFIG.upload_small_max_file_parts, file_total_parts=3, bytes=part,
+        ))
+
+
 # TODO: add tests for streaming uploads
 # TODO: add tests for uploads where InputFile.parts/InputFileBig.parts is less than actual number of uploaded parts
