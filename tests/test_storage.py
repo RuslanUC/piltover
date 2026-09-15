@@ -1,6 +1,7 @@
 import hashlib
 import math
 import os
+from collections.abc import Iterable, AsyncGenerator
 
 import pytest
 from pyrogram.errors import FilePartSizeChanged, FilePartInvalid
@@ -11,6 +12,7 @@ from pyrogram.raw.types import InputPeerSelf, InputMediaUploadedDocument, InputF
 from pyrogram.raw.types.upload import File
 
 from piltover.config import APP_CONFIG
+from tests.client import TestClient
 from tests.conftest import ClientFactory
 
 
@@ -189,6 +191,29 @@ async def test_save_big_file_part_size_changed_last_part(client_with_auth: Clien
     assert file_result.bytes == part2_new
 
 
+async def _stream_download(client: TestClient, document: Document) -> AsyncGenerator[bytes]:
+    one_mb_parts = math.ceil(document.size / 1024 / 1024)
+
+    for part_num in range(one_mb_parts):
+        length = 1024 * 1024
+        offset = length * part_num
+
+        file_result = await client.invoke(GetFile(
+            location=InputDocumentFileLocation(
+                id=document.id,
+                access_hash=document.access_hash,
+                file_reference=document.file_reference,
+                thumb_size="",
+            ),
+            offset=offset,
+            limit=length,
+            precise=False,
+        ))
+
+        assert isinstance(file_result, File)
+        yield file_result.bytes
+
+
 @pytest.mark.parametrize(
     ("part_sizes", "chunk_size"),
     [
@@ -235,25 +260,12 @@ async def test_save_file_part(client_with_auth: ClientFactory, part_sizes: tuple
     doc = result.document
     assert isinstance(doc, Document)
 
-    one_mb_parts = math.ceil(len(file_content) / 1024 / 1024)
-
-    for part_num in range(one_mb_parts):
-        length = 1024 * 1024
+    part_num = 0
+    length = 1024 * 1024
+    async for chunk in _stream_download(client, doc):
         offset = length * part_num
-
-        file_result = await client.invoke(GetFile(
-            location=InputDocumentFileLocation(
-                id=doc.id,
-                access_hash=doc.access_hash,
-                file_reference=doc.file_reference,
-                thumb_size="",
-            ),
-            offset=offset,
-            limit=length,
-            precise=False,
-        ))
-        assert isinstance(file_result, File)
-        assert file_result.bytes == file_content[offset:offset+length]
+        part_num += 1
+        assert chunk == file_content[offset:offset + length]
 
 
 @pytest.mark.asyncio
@@ -270,3 +282,47 @@ async def test_save_file_part_max_size_exceeded(client_with_auth: ClientFactory)
 
     with pytest.raises(FilePartInvalid):
         await client.invoke(SaveFilePart(file_id=file_id, file_part=parts_num, bytes=part))
+
+
+@pytest.mark.asyncio
+async def test_save_file_part_reupload_smaller_part_near_limit(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+    file_id = client.rnd_id()
+
+    part = os.urandom(512 * 1024)
+    part_small = os.urandom(256 * 1024)
+
+    parts_num = APP_CONFIG.upload_small_file_max_size_kb * 2 // 1024
+
+    for part_id in range(parts_num):
+        assert await client.invoke(SaveFilePart(file_id=file_id, file_part=part_id, bytes=part))
+
+    await client.invoke(SaveFilePart(file_id=file_id, file_part=parts_num - 1, bytes=part_small))
+    await client.invoke(SaveFilePart(file_id=file_id, file_part=parts_num, bytes=part_small))
+
+    file_content = part * (parts_num - 1) + part_small * 2
+    checksum = hashlib.md5(file_content).hexdigest()
+
+    result = await client.invoke(UploadMedia(
+        peer=InputPeerSelf(),
+        media=InputMediaUploadedDocument(
+            file=InputFile(id=file_id, parts=parts_num + 1, name="idk.bin", md5_checksum=checksum),
+            mime_type="application/octet-stream",
+            attributes=[],
+        ),
+    ))
+
+    assert isinstance(result, MessageMediaDocument)
+    doc = result.document
+    assert isinstance(doc, Document)
+
+    part_num = 0
+    length = 1024 * 1024
+    async for chunk in _stream_download(client, doc):
+        offset = length * part_num
+        part_num += 1
+        assert chunk == file_content[offset:offset + length]
+
+
+# TODO: add tests for streaming uploads
+# TODO: add tests for uploads where InputFile.parts/InputFileBig.parts is less than actual number of uploaded parts

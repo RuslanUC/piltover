@@ -58,6 +58,7 @@ async def save_file_part(request: SaveFilePart, user_id: int) -> bool:
             int,
             await UploadingFileSmallPart.filter(
                 file=file,
+                part_id__not=request.file_part,
             ).annotate(total_size=Sum("size")).first().values_list("total_size", flat=True)
         )
         if (total_size + size) > APP_CONFIG.upload_small_file_max_size_kb * 1024:
