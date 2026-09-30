@@ -1,6 +1,8 @@
 from datetime import datetime, UTC
 from typing import cast, TypeVar, overload, Literal
 
+from pypika_tortoise import Dialects, Parameter
+from tortoise import Tortoise
 from tortoise.expressions import Q
 from tortoise.functions import Max
 from tortoise.queryset import QuerySet
@@ -8,7 +10,7 @@ from tortoise.queryset import QuerySet
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.updates import get_state_internal
 from piltover.db.enums import PeerType, DialogFolderId
-from piltover.db.models import Dialog, Peer, SavedDialog, MessageRef
+from piltover.db.models import Dialog, Peer, SavedDialog, MessageRef, MessageDraft, PeerNotifySettings, MessageContent
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import DialogPeer, Updates, TLObjectVector, InputDialogPeer
@@ -146,6 +148,314 @@ async def get_dialogs_internal(
     ...
 
 
+async def _get_Dialog_dialogs_internal(
+        user_id: int, offset_id: int = 0, offset_date: int = 0, limit: int = 100,
+        offset_peer: TLInputPeerBase | None = None, folder_id: int | None = None,
+        exclude_pinned: bool = False, allow_slicing: bool = False,
+) -> Dialogs | DialogsSlice:
+    conn = Tortoise.get_connection("default")
+    dialect = Dialects(conn.capabilities.dialect)
+    placeholder_factory = Parameter.IDX_PLACEHOLDERS[dialect]
+
+    add_condition = []
+    params = []
+
+    # TODO: offset peer
+
+    if offset_id:
+        add_condition.append(f"dp.last_message_id < {placeholder_factory(len(params) + 2)}")
+        params.append(offset_id)
+    if exclude_pinned:
+        add_condition.append("d.pinned_index IS NULL")
+    if offset_date:
+        add_condition.append(f"dp.last_message_date < {placeholder_factory(len(params) + 2)}")
+        params.append(datetime.fromtimestamp(offset_date, UTC))
+    if folder_id is not None:
+        add_condition.append(f"d.folder_id = {placeholder_factory(len(params) + 2)}")
+        params.append(folder_id)
+
+    if add_condition:
+        add_condition.insert(0, "")
+
+    dialogs_dicts = await conn.execute_query_dict(
+        f"""
+        SELECT 
+            d.id `dialog.id`,
+            d.pinned_index `dialog.pinned_index`,
+            d.owner_id `dialog.owner_id`,
+            d.peer_id `dialog.peer_id`,
+            d.unread_mark `dialog.unread_mark`,
+            d.folder_id `dialog.folder_id`,
+            d.visible `dialog.visible`,
+            d.last_read_message_id `dialog.last_read_message_id`,
+            
+            dp.id `peer.id`,
+            dp.owner_id `peer.owner_id`,
+            dp.type `peer.type`,
+            dp.blocked_at `peer.blocked_at`,
+            dp.user_ttl_period_days `peer.user_ttl_period_days`,
+            dp.user_has_wallpaper `peer.user_has_wallpaper`,
+            dp.last_message_id `peer.last_message_id`,
+            dp.last_message_date `peer.last_message_date`,
+            dp.out_max_read_id `peer.out_max_read_id`,
+            dp.user_id `peer.user_id`,
+            dp.chat_id `peer.chat_id`,
+            dp.channel_id `peer.channel_id`,
+            
+            draft.id `draft.id`,
+            draft.message `draft.message`,
+            draft.date `draft.date`,
+            draft.reply_to_id `draft.reply_to_id`,
+            draft.no_webpage `draft.no_webpage`,
+            draft.invert_media `draft.invert_media`,
+            draft.entities `draft.entities`,
+            
+            notif.id `notif.id`,
+            notif.show_previews `notif.show_previews`,
+            notif.muted `notif.muted`,
+            notif.muted_until `notif.muted_until`,
+            
+            top_ref.id `top_ref.id`,
+            top_ref.content_id `top_ref.content_id`,
+            top_ref.peer_id `top_ref.peer_id`,
+            top_ref.random_id `top_ref.random_id`,
+            top_ref.random_user_id `top_ref.random_user_id`,
+            top_ref.pinned `top_ref.pinned`,
+            top_ref.version `top_ref.version`,
+            top_ref.from_scheduled `top_ref.from_scheduled`,
+            top_ref.reply_to_id `top_ref.reply_to_id`,
+            top_ref.top_message_id `top_ref.top_message_id`,
+            top_ref.discussion_id `top_ref.discussion_id`,
+            top_ref.is_discussion `top_ref.is_discussion`,
+            top_ref.scheduled_by_user_id `top_ref.scheduled_by_user_id`,
+            top_ref.author_id_for_unread_reactions `top_ref.author_id_for_unread_reactions`,
+            top_ref.reactions_unread_author_id `top_ref.reactions_unread_author_id`,
+            
+            top_content.id `top_content.id`,
+            top_content.message `top_content.message`,
+            top_content.date `top_content.date`,
+            top_content.edit_date `top_content.edit_date`,
+            top_content.type `top_content.type`,
+            top_content.entities `top_content.entities`,
+            top_content.extra_info `top_content.extra_info`,
+            top_content.media_group_id `top_content.media_group_id`,
+            top_content.channel_post `top_content.channel_post`,
+            top_content.anonymous `top_content.anonymous`,
+            top_content.post_author `top_content.post_author`,
+            top_content.scheduled_date `top_content.scheduled_date`,
+            top_content.ttl_period_days `top_content.ttl_period_days`,
+            top_content.reply_markup `top_content.reply_markup`,
+            top_content.no_forwards `top_content.no_forwards`,
+            top_content.edit_hide `top_content.edit_hide`,
+            top_content.author_id `top_content.author_id`,
+            top_content.media_id `top_content.media_id`,
+            top_content.fwd_header_id `top_content.fwd_header_id`,
+            top_content.post_info_id `top_content.post_info_id`,
+            top_content.via_bot_id `top_content.via_bot_id`,
+            top_content.version `top_content.version`,
+            top_content.reactions_version `top_content.reactions_version`,
+            top_content.replies_version `top_content.replies_version`,
+            top_content.send_as_channel_id `top_content.send_as_channel_id`,
+            top_content.internal_random_id `top_content.internal_random_id`,
+            top_content.can_see_reactions_list `top_content.can_see_reactions_list`,
+            top_content.reply_quote_text `top_content.reply_quote_text`,
+            top_content.reply_quote_offset `top_content.reply_quote_offset`,
+            
+            COUNT(unread_message.id) `_.unread_count`,
+            COUNT(unread_reactions.id) `_.unread_reactions_count`
+        FROM dialog d
+            INNER JOIN peer dp ON d.peer_id = dp.id
+            LEFT OUTER JOIN messagedraft draft ON draft.user_id = d.owner_id AND draft.peer_id = d.peer_id
+            LEFT OUTER JOIN peernotifysettings notif ON notif.user_id = d.owner_id AND notif.peer_id = d.peer_id
+            LEFT OUTER JOIN messageref top_ref ON top_ref.id = dp.last_message_id
+            LEFT OUTER JOIN messagecontent top_content ON top_content.id = top_ref.content_id
+            JOIN messageref unread_message ON d.peer_id = unread_message.peer_id AND unread_message.id > d.last_read_message_id AND unread_message.scheduled_by_user_id IS NULL
+            JOIN messageref unread_reactions ON d.peer_id = unread_message.peer_id AND unread_reactions.reactions_unread_author_id = {placeholder_factory(1)}
+        WHERE d.owner_id = {placeholder_factory(2)} AND d.visible = 1 {' AND '.join(add_condition)}
+        GROUP BY d.peer_id
+        ORDER BY `peer.last_message_date` DESC, `peer.last_message_id` DESC, `peer.id` DESC
+        LIMIT {placeholder_factory(len(params) + 3)}
+        """,
+        [user_id, user_id, *params, limit],
+    )
+
+    if dialogs_dicts:
+        dialogs = []
+        drafts = []
+        notify_settings = []
+        unread_counts = []
+        unread_reaction_counts = []
+        messages = []
+
+        for dialog_dict in dialogs_dicts:
+            peer = Peer(
+                id=dialog_dict["peer.id"],
+                owner_id=dialog_dict["peer.owner_id"],
+                type=dialog_dict["peer.type"],
+                blocked_at=dialog_dict["peer.blocked_at"],
+                user_ttl_period_days=dialog_dict["peer.user_ttl_period_days"],
+                user_has_wallpaper=dialog_dict["peer.user_has_wallpaper"],
+                last_message_id=dialog_dict["peer.last_message_id"],
+                last_message_date=dialog_dict["peer.last_message_date"],
+                out_max_read_id=dialog_dict["peer.out_max_read_id"],
+                user_id=dialog_dict["peer.user_id"],
+                chat_id=dialog_dict["peer.chat_id"],
+                channel_id=dialog_dict["peer.channel_id"],
+            )
+            peer._saved_in_db = True
+
+            dialogs.append(dialog := Dialog(
+                id=dialog_dict["dialog.id"],
+                pinned_index=dialog_dict["dialog.pinned_index"],
+                owner_id=dialog_dict["dialog.owner_id"],
+                peer_id=dialog_dict["dialog.peer_id"],
+                unread_mark=dialog_dict["dialog.unread_mark"],
+                folder_id=dialog_dict["dialog.folder_id"],
+                visible=dialog_dict["dialog.visible"],
+                last_read_message_id=dialog_dict["dialog.last_read_message_id"],
+
+                peer=peer,
+            ))
+            dialog._saved_in_db = True
+
+            if dialog_dict["draft.id"] is None:
+                drafts.append(None)
+            else:
+                drafts.append(MessageDraft(
+                    id=dialog_dict["draft.id"],
+                    message=dialog_dict["draft.message"],
+                    date=dialog_dict["draft.date"],
+                    reply_to_id=dialog_dict["draft.reply_to_id"],
+                    no_webpage=dialog_dict["draft.no_webpage"],
+                    invert_media=dialog_dict["draft.invert_media"],
+                    entities=dialog_dict["draft.entities"],
+                ))
+
+            if dialog_dict["notif.id"] is None:
+                notify_settings.append(None)
+            else:
+                notify_settings.append(PeerNotifySettings(
+                    id=dialog_dict["notif.id"],
+                    show_previews=dialog_dict["notif.show_previews"],
+                    muted=dialog_dict["notif.muted"],
+                    muted_until=dialog_dict["notif.muted_until"],
+                ))
+
+            unread_counts.append(dialog_dict["_.unread_count"])
+            unread_reaction_counts.append(dialog_dict["_.unread_reactions_count"])
+
+            if dialog_dict["top_ref.id"] is not None:
+                messages.append(ref := MessageRef(
+                    id=dialog_dict["top_ref.id"],
+                    content_id=dialog_dict["top_ref.content_id"],
+                    peer_id=dialog_dict["top_ref.peer_id"],
+                    random_id=dialog_dict["top_ref.random_id"],
+                    random_user_id=dialog_dict["top_ref.random_user_id"],
+                    pinned=dialog_dict["top_ref.pinned"],
+                    version=dialog_dict["top_ref.version"],
+                    from_scheduled=dialog_dict["top_ref.from_scheduled"],
+                    reply_to_id=dialog_dict["top_ref.reply_to_id"],
+                    top_message_id=dialog_dict["top_ref.top_message_id"],
+                    discussion_id=dialog_dict["top_ref.discussion_id"],
+                    is_discussion=dialog_dict["top_ref.is_discussion"],
+                    scheduled_by_user_id=dialog_dict["top_ref.scheduled_by_user_id"],
+                    author_id_for_unread_reactions=dialog_dict["top_ref.author_id_for_unread_reactions"],
+                    reactions_unread_author_id=dialog_dict["top_ref.reactions_unread_author_id"],
+                ))
+                ref._saved_in_db = True
+
+                content = MessageContent(
+                    id=dialog_dict["top_content.id"],
+                    message=dialog_dict["top_content.message"],
+                    date=dialog_dict["top_content.date"],
+                    edit_date=dialog_dict["top_content.edit_date"],
+                    type=dialog_dict["top_content.type"],
+                    entities=dialog_dict["top_content.entities"],
+                    extra_info=dialog_dict["top_content.extra_info"],
+                    media_group_id=dialog_dict["top_content.media_group_id"],
+                    channel_post=dialog_dict["top_content.channel_post"],
+                    anonymous=dialog_dict["top_content.anonymous"],
+                    post_author=dialog_dict["top_content.post_author"],
+                    scheduled_date=dialog_dict["top_content.scheduled_date"],
+                    ttl_period_days=dialog_dict["top_content.ttl_period_days"],
+                    reply_markup=dialog_dict["top_content.reply_markup"],
+                    no_forwards=dialog_dict["top_content.no_forwards"],
+                    edit_hide=dialog_dict["top_content.edit_hide"],
+                    author_id=dialog_dict["top_content.author_id"],
+                    media_id=dialog_dict["top_content.media_id"],
+                    fwd_header_id=dialog_dict["top_content.fwd_header_id"],
+                    post_info_id=dialog_dict["top_content.post_info_id"],
+                    via_bot_id=dialog_dict["top_content.via_bot_id"],
+                    version=dialog_dict["top_content.version"],
+                    reactions_version=dialog_dict["top_content.reactions_version"],
+                    replies_version=dialog_dict["top_content.replies_version"],
+                    send_as_channel_id=dialog_dict["top_content.send_as_channel_id"],
+                    internal_random_id=dialog_dict["top_content.internal_random_id"],
+                    can_see_reactions_list=dialog_dict["top_content.can_see_reactions_list"],
+                    reply_quote_text=dialog_dict["top_content.reply_quote_text"],
+                    reply_quote_offset=dialog_dict["top_content.reply_quote_offset"],
+                )
+                content._saved_in_db = True
+                ref.content = content
+
+        ucc = UsersChatsChannels()
+
+        dialog_by_peer: dict[int, tuple[Dialog, MessageRef | None]] = {}
+        for dialog in dialogs:
+            dialog_by_peer[dialog.peer_id] = (dialog, None)
+
+        # messages = await Dialog.top_message_query_bulk(user_id, dialogs)
+        for message_ref in messages:
+            dialog, _ = dialog_by_peer[message_ref.peer_id]
+            dialog_by_peer[message_ref.peer_id] = dialog, message_ref
+
+        for dialog, message in dialog_by_peer.values():
+            if message is not None:
+                continue
+            ucc.add_peer(dialog.peer)
+
+        tl_messages = await MessageRef.to_tl_bulk_maybecached(messages, user_id, False)
+        for tl_message in tl_messages:
+            ucc.add_from_tl(tl_message)
+
+        chats: list[TLChatBase]
+        channels: list[TLChatBase]
+        users, chats, channels = await ucc.resolve()
+
+        result = Dialogs(
+            dialogs=await Dialog.to_tl_bulk(user_id, dialogs, dialog_by_peer, drafts, notify_settings, unread_counts, unread_reaction_counts),
+            messages=tl_messages,
+            chats=[*chats, *channels],
+            users=users,
+        )
+    else:
+        dialogs = []
+        result = Dialogs(
+            dialogs=[],
+            messages=[],
+            chats=[],
+            users=[],
+        )
+
+    if not allow_slicing:
+        return result
+
+    dialogs_query = Dialog.filter(owner_id=user_id, visible=True)
+    if folder_id is not None:
+        dialogs_query = dialogs_query.filter(folder_id=DialogFolderId(folder_id))
+    count = await dialogs_query.count()
+    if count > len(dialogs):
+        return DialogsSlice(
+            dialogs=result.dialogs,
+            messages=result.messages,
+            chats=result.chats,
+            users=result.users,
+            count=count,
+        )
+
+    return result
+
+
 async def get_dialogs_internal(
         model: type[DialogT], tl_cls: type[TLDialogsT], tl_slice_cls: type[TLDialogsSliceT], user_id: int,
         offset_id: int = 0, offset_date: int = 0, limit: int = 100,
@@ -154,6 +464,11 @@ async def get_dialogs_internal(
 ) -> TLDialogsT | TLDialogsSliceT:
     if limit > 100 or limit < 1:
         limit = 100
+
+    if model is Dialog:
+        return await _get_Dialog_dialogs_internal(
+            user_id, offset_id, offset_date, limit, offset_peer, folder_id, exclude_pinned, allow_slicing,
+        )
 
     query = Q(owner_id=user_id)
 

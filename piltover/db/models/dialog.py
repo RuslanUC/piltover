@@ -61,43 +61,53 @@ class Dialog(DialogBase):
     @classmethod
     async def _get_in_out_ids_and_unread_bulk(
             cls, user_id: int, dialogs: list[Dialog], no_reactions: bool = False, no_mentions: bool = False,
+            unread_counts: list[int] | None = None, unread_reaction_counts: list[int] | None = None,
     ) -> list[tuple[int, int, int, int, int]]:
         if not dialogs:
             return []
 
-        fetch_unreads_for = []
-        for dialog in dialogs:
-            if (dialog.peer.last_message_id or 0) > dialog.last_read_message_id:
-                fetch_unreads_for.append(dialog.id)
+        if unread_counts is not None:
+            unread_by_dialog = {dialog.id: unread_count for dialog, unread_count in zip(dialogs, unread_counts)}
+        else:
+            fetch_unreads_for = []
+            for dialog in dialogs:
+                if (dialog.peer.last_message_id or 0) > dialog.last_read_message_id:
+                    fetch_unreads_for.append(dialog.id)
 
-        unread_by_dialog = {}
-        if fetch_unreads_for:
-            conn = Tortoise.get_connection("default")
-            dialect = Dialects(conn.capabilities.dialect)
-            placeholder_factory = Parameter.IDX_PLACEHOLDERS[dialect]
-            placeholders = [placeholder_factory(i + 1) for i in range(len(fetch_unreads_for))]
+            unread_by_dialog = {}
+            if fetch_unreads_for:
+                conn = Tortoise.get_connection("default")
+                dialect = Dialects(conn.capabilities.dialect)
+                placeholder_factory = Parameter.IDX_PLACEHOLDERS[dialect]
+                placeholders = [placeholder_factory(i + 1) for i in range(len(fetch_unreads_for))]
 
-            if len(fetch_unreads_for) == 1:
-                where_condition = f"= {placeholders[0]}"
-            else:
-                where_condition = f"IN ({','.join(placeholders)})"
+                if len(fetch_unreads_for) == 1:
+                    where_condition = f"= {placeholders[0]}"
+                else:
+                    where_condition = f"IN ({','.join(placeholders)})"
 
-            sql = _UNREAD_COUNTS_SQL.format(state_condition=where_condition)
-            _, results = await conn.execute_query(sql, fetch_unreads_for)
-            for res in results:
-                unread_by_dialog[res["dialog_id"]] = res["count"]
+                sql = _UNREAD_COUNTS_SQL.format(state_condition=where_condition)
+                _, results = await conn.execute_query(sql, fetch_unreads_for)
+                for res in results:
+                    unread_by_dialog[res["dialog_id"]] = res["count"]
 
-        unread_reactions_by_peer = {}
-        if not no_reactions:
-            unread_reactions_counts = await models.MessageRef.filter(
-                peer_id__in=[dialog.peer_id for dialog in dialogs],
-                reactions_unread_author_id=user_id,
-            ).group_by(
-                "peer_id"
-            ).annotate(
-                count=Count("id")
-            ).values_list("peer_id", "count")
-            unread_reactions_by_peer: dict[int, int] = dict(unread_reactions_counts)
+        if unread_reaction_counts is not None:
+            unread_reactions_by_peer = {
+                dialog.peer_id: unread_count
+                for dialog, unread_count in zip(dialogs, unread_reaction_counts)
+            }
+        else:
+            unread_reactions_by_peer = {}
+            if not no_reactions:
+                unread_reactions_counts = await models.MessageRef.filter(
+                    peer_id__in=[dialog.peer_id for dialog in dialogs],
+                    reactions_unread_author_id=user_id,
+                ).group_by(
+                    "peer_id"
+                ).annotate(
+                    count=Count("id")
+                ).values_list("peer_id", "count")
+                unread_reactions_by_peer: dict[int, int] = dict(unread_reactions_counts)
 
         unread_mentions_by_chat = {}
         if not no_mentions:
@@ -228,39 +238,44 @@ class Dialog(DialogBase):
     @classmethod
     async def to_tl_bulk(
             cls, user_id: int, dialogs: list[Dialog], messages: dict[int, tuple[Dialog, models.MessageRef | None]],
+            drafts: list[models.MessageDraft] | None = None,
+            notify_settings: list[models.PeerNotifySettings] | None = None,
+            unread_counts: list[int] | None = None, unread_reaction_counts: list[int] | None = None,
     ) -> list[TLDialog]:
         if not dialogs:
             return []
 
         peer_ids = [dialog.peer_id for dialog in dialogs]
 
-        drafts = {
-            draft.peer_id: draft
-            for draft in await models.MessageDraft.filter(user_id=user_id, peer_id__in=peer_ids)
-        }
+        if drafts is None:
+            drafts_by_peer_id = {
+                draft.peer_id: draft
+                for draft in await models.MessageDraft.filter(user_id=user_id, peer_id__in=peer_ids)
+            }
+            drafts = [drafts_by_peer_id.get(dialog.peer_id) for dialog in dialogs]
 
-        read_states = await cls._get_in_out_ids_and_unread_bulk(user_id, dialogs)
+        read_states = await cls._get_in_out_ids_and_unread_bulk(user_id, dialogs, unread_counts, unread_reaction_counts)
 
-        notify_settings = {
-            settings.peer_id: settings
-            for settings in await models.PeerNotifySettings.filter(user_id=user_id, peer_id__in=peer_ids)
-        }
+        if notify_settings is None:
+            notify_settings_by_peer_id = {
+                settings.peer_id: settings
+                for settings in await models.PeerNotifySettings.filter(user_id=user_id, peer_id__in=peer_ids)
+            }
+            notify_settings = [notify_settings_by_peer_id.get(dialog.peer_id) for dialog in dialogs]
 
         tl = []
-        for dialog, read_state in zip(dialogs, read_states, strict=True):
+        for dialog, read_state, draft, notify_setting in zip(dialogs, read_states, drafts, notify_settings, strict=True):
             top_message = 0
             peer_id = dialog.peer_id
             if peer_id in messages and (peer_message := messages[peer_id][1]) is not None:
                 top_message = peer_message.id
 
-            draft = None
-            if peer_id in drafts:
-                draft = drafts[peer_id].to_tl()
+            draft_tl = draft.to_tl() if draft is not None else None
 
             in_read_max_id, out_read_max_id, unread_count, unread_reactions, unread_mentions = read_state
             this_notify_settings_tl = models.PeerNotifySettings.DEFAULT_TL
-            if peer_id in notify_settings:
-                this_notify_settings_tl = notify_settings[peer_id].to_tl()
+            if notify_setting is not None:
+                this_notify_settings_tl = notify_setting.to_tl()
 
             # TODO: include pts if peer is channel
             tl.append(TLDialog(
@@ -268,7 +283,7 @@ class Dialog(DialogBase):
                 unread_mark=dialog.unread_mark,
                 peer=dialog.peer.to_tl(),
                 top_message=cast(int | None, top_message) or 0,
-                draft=draft,
+                draft=draft_tl,
                 read_inbox_max_id=in_read_max_id,
                 read_outbox_max_id=out_read_max_id,
                 unread_count=unread_count,
