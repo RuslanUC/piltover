@@ -3,12 +3,17 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import itertools
 from asyncio import Queue, Event
+from io import BytesIO
 from time import time
 from typing import cast, TYPE_CHECKING
 
 from loguru import logger
 from mtproto.transport.packets import DecryptedMessagePacket
+from nats.aio.msg import Msg
+from nats.aio.subscription import Subscription
+from nats.errors import BadSubscriptionError
 from tortoise.expressions import F, Q
 
 import piltover
@@ -18,9 +23,11 @@ from piltover.db.enums import PrivacyRuleKeyType
 from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, MessageRef, \
     Chat, Channel
 from piltover.exceptions import Unreachable
-from piltover.tl import Updates, Long, Int, BadServerSalt, BadMsgNotification
+from piltover.tl import Updates, Long, Int, BadServerSalt, BadMsgNotification, UpdatesTooLong
+from piltover.tl.base.internal import MessageToGateway
 from piltover.tl.core_types import TLObject, Message, MsgContainer
-from piltover.tl.types.internal import ObjectWithLayerRequirement, TaggedLongVector, NeedsContextValues
+from piltover.tl.types.internal import ObjectWithLayerRequirement, TaggedLongVector, NeedsContextValues, \
+    MessageToClient, SetInternalPush, ChannelSubscribe, ChannelUnsubscribe, NotifyInternalPush
 from piltover.tl.utils import is_content_related, is_id_strictly_not_content_related, is_id_strictly_content_related
 from piltover.utils.debug import measure_time
 from piltover.tl.serialization_context import SerializationContext, ContextValues
@@ -48,9 +55,10 @@ class MsgIdValues:
 # TODO: store sessions in redis or something (with non-acked messages) to be able to restore session after reconnect
 class Session:
     __slots__ = (
-        "client", "session_id", "auth_data", "min_msg_id", "user_id", "auth_id", "channel_ids", "auth_loaded_at",
+        "client", "session_id", "auth_data", "min_msg_id", "user_id", "auth_id", "auth_loaded_at",
         "channels_loaded_at", "salt_now", "salt_prev", "no_updates", "layer", "is_bot", "mfa_pending", "msg_id_values",
-        "out_seq_no", "message_queue", "message_available", "is_internal_push", "had_init_connection",
+        "out_seq_no", "message_queue", "message_available", "had_init_connection", "internal_push_subscription",
+        "channel_subscriptions", "session_subscriptions", "user_subscription", "auth_subscription",
     )
 
     def __init__(self, session_id: int, client: Client | None = None, auth_data: AuthData | None = None) -> None:
@@ -69,7 +77,6 @@ class Session:
         self.auth_loaded_at = 0.
         self.had_init_connection = False
 
-        self.channel_ids: set[int] = set()
         self.channels_loaded_at = 0.
 
         self.salt_now = Salt(b"\x00" * 8, 0)
@@ -77,10 +84,15 @@ class Session:
 
         self.no_updates = False
         self.layer = 133
-        self.is_internal_push = False
 
         self.message_queue = Queue()
         self.message_available: Event | None = None
+
+        self.session_subscriptions: list[Subscription] = []
+        self.user_subscription: Subscription | None = None
+        self.auth_subscription: Subscription | None = None
+        self.internal_push_subscription: Subscription | None = None
+        self.channel_subscriptions: dict[int, Subscription] = {}
 
         # TODO: store request states (i.e. received, processing, acked, etc.)
         # TODO: store whole session in redis or something
@@ -92,23 +104,76 @@ class Session:
     def __hash__(self) -> int:
         return hash(self.uniq_id)
 
+    async def _subscribe(self, subject: str) -> Subscription:
+        if self.client is None:
+            raise Unreachable
+        return await self.client.server.nats.subscribe(
+            f"piltover.client.{subject}",
+            cb=self._handle_update,
+        )
+
     # TODO: rewrite
-    def connect(self, client: Client) -> None:
+    async def connect(self, client: Client) -> None:
         # TODO: raise AuthKeyDuplicated if self.client is not None
         self.client = client
         self.message_available = client.message_available
         if not self.message_queue.empty():
-            self.message_available.set()
-        piltover.session.SessionManager.broker.subscribe(self)
+            client.message_available.set()
+
+        key_id, session_id = self.uniq_id()
+        self.session_subscriptions.append(await self._subscribe(f"session.{key_id}-{session_id}"))
+        self.session_subscriptions.append(await self._subscribe(f"key.{key_id}"))
+
+        await self.refresh_auth_maybe(True)
 
     # TODO: rewrite
-    def disconnect(self) -> None:
+    async def disconnect(self) -> None:
         self.client = None
         self.message_available = None
         self.had_init_connection = False
-        # TODO: clear message_queue
-        piltover.session.SessionManager.broker.unsubscribe(self)
-        piltover.session.SessionManager.cleanup(self)
+
+        for sub in itertools.chain(
+                (self.user_subscription, self.auth_subscription),
+                self.session_subscriptions,
+                self.channel_subscriptions.values(),
+        ):
+            if sub is None:
+                continue
+            await sub.unsubscribe()
+
+        self.session_subscriptions.clear()
+        self.channel_subscriptions.clear()
+        self.user_subscription = None
+        self.auth_subscription = None
+
+    async def _handle_update(self, message: Msg) -> None:
+        obj = cast(MessageToGateway, TLObject.read(BytesIO(message.data)))
+
+        match obj:
+            case MessageToClient():
+                if obj.ignore_session_id == self.session_id:
+                    return
+                await self.enqueue(obj.obj, False)
+            case SetInternalPush():
+                if self.internal_push_subscription is not None:
+                    return
+                await self.refresh_auth_maybe(True)
+                if self.user_id:
+                    self.internal_push_subscription = await self._subscribe(f"internal-push.{self.user_id}")
+                logger.debug(f"Registered session {self.session_id} for internal push")
+            case ChannelSubscribe():
+                if obj.channel_id in self.channel_subscriptions:
+                    return
+                self.channel_subscriptions[obj.channel_id] = await self._subscribe(f"channel-sub.{obj.channel_id}")
+            case ChannelUnsubscribe():
+                if obj.channel_id not in self.channel_subscriptions:
+                    return
+                sub = self.channel_subscriptions.pop(obj.channel_id)
+                await sub.unsubscribe()
+            case NotifyInternalPush():
+                await self.enqueue(UpdatesTooLong(), False)
+            case _:
+                raise Unreachable
 
     @staticmethod
     def _get_attr_or_element(obj: TLObject | list, field_name: str) -> TLObject | list:
@@ -222,19 +287,26 @@ class Session:
         if perm_key_layer is not None:
             self.layer = perm_key_layer
 
-    def _reset_auth(self) -> None:
-        piltover.session.SessionManager.broker.unsubscribe_auth(self.auth_id, self)
-        piltover.session.SessionManager.broker.unsubscribe_user(self.user_id, self)
-        piltover.session.SessionManager.broker.channels_diff_update(self, self.channel_ids, [])
-
+    async def _reset_auth(self) -> None:
         self.user_id = None
         self.auth_id = None
         self.is_bot = False
         self.mfa_pending = False
-        self.channel_ids.clear()
+
+        for sub in itertools.chain(
+                (self.user_subscription, self.auth_subscription),
+                self.channel_subscriptions.values(),
+        ):
+            if sub is None:
+                continue
+            await sub.unsubscribe()
+
+        self.channel_subscriptions.clear()
+        self.user_subscription = None
+        self.auth_subscription = None
 
     async def refresh_auth_maybe(self, force_refresh_auth: bool = False) -> None:
-        if self.auth_data is None:
+        if self.auth_data is None or self.client is None:
             return
 
         if force_refresh_auth and self.auth_data.auth_key_id is not None:
@@ -247,10 +319,9 @@ class Session:
         old_auth_id = self.auth_id
 
         if auth_key_id is None or perm_auth_key_id is None:
-            self._reset_auth()
+            await self._reset_auth()
             return
 
-        # TODO: dont try to refetch auth every time if it is None?
         if (time() - self.auth_loaded_at) > 60 or force_refresh_auth or self.auth_id is None:
             logger.trace("Refreshing auth...")
             self.auth_loaded_at = time()
@@ -264,39 +335,40 @@ class Session:
                 self.is_bot = auth["is_bot"]
                 self.mfa_pending = auth["mfa_pending"]
             else:
-                self._reset_auth()
+                await self._reset_auth()
                 return
+
+        if old_user_id != self.user_id:
+            if old_user_id and self.user_subscription is not None:
+                await self.user_subscription.unsubscribe()
+            self.user_subscription = await self._subscribe(f"user.{self.user_id}")
+
+        if old_auth_id != self.auth_id:
+            if old_auth_id and self.auth_subscription is not None:
+                await self.auth_subscription.unsubscribe()
+            self.auth_subscription = await self._subscribe(f"auth.{self.auth_id}")
 
         if self.auth_id is not None and not self.mfa_pending and (time() - self.channels_loaded_at) > 60 * 5:
             logger.trace("Refreshing channels...")
             self.channels_loaded_at = time()
 
-            channel_ids: TaggedLongVector
-            if (channel_ids := await Cache.obj.get(f"channels:{self.user_id}")) is None:
-                channel_ids = TaggedLongVector(
-                    vec=cast(list[int], await ChatParticipant.filter(
-                        channel_id__not_isnull=True, user_id=self.user_id, left=False,
-                    ).values_list("channel_id", flat=True)),
-                )
-                await Cache.obj.set(f"channels:{self.user_id}", channel_ids, ttl=60 * 10)
+            new_channels = set(cast(
+                list[int],
+                await ChatParticipant.filter(
+                    channel_id__not_isnull=True, user_id=self.user_id, left=False,
+                ).values_list("channel_id", flat=True)
+            ))
 
-            channel_ids: list[int] = channel_ids.vec
-            old_channels = set(self.channel_ids)
-            new_channels = set(channel_ids)
+            old_channels = self.channel_subscriptions.keys()
             channels_to_delete = old_channels - new_channels
             channels_to_add = new_channels - old_channels
 
-            self.channel_ids = new_channels
-            piltover.session.SessionManager.broker.channels_diff_update(self, channels_to_delete, channels_to_add)
+            for channel_id in channels_to_delete:
+                sub = self.channel_subscriptions.pop(channel_id)
+                await sub.unsubscribe()
 
-        if old_user_id != self.user_id:
-            if old_user_id:
-                piltover.session.SessionManager.broker.unsubscribe_user(old_user_id, self)
-            piltover.session.SessionManager.broker.subscribe_user(self.user_id, self)
-        if old_auth_id != self.auth_id:
-            if old_auth_id:
-                piltover.session.SessionManager.broker.unsubscribe_auth(old_auth_id, self)
-            piltover.session.SessionManager.broker.subscribe_auth(self.auth_id, self)
+            for channel_id in channels_to_add:
+                self.channel_subscriptions[channel_id] = await self._subscribe(f"channel-sub.{channel_id}")
 
     # https://core.telegram.org/mtproto/description#message-identifier-msg-id
     def msg_id(self, in_reply: bool) -> int:

@@ -1627,6 +1627,15 @@ wheels = [
 ]
 
 [[package]]
+name = "nats-py"
+version = "2.16.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/2c/c8/739b72c9201081e48000884d476231873ac82f7247c43b33823eaf3c0bfb/nats_py-2.16.0.tar.gz", hash = "sha256:1d137ed7afc9b59033b3199324c6237df2016a5091935871344a787eba6b72fc", size = 79731, upload-time = "2026-09-16T07:47:21.843Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/48/a3/16cec37172144d3362d7551bb823a098b2b2903281fc095dfe4480b8c2fd/nats_py-2.16.0-py3-none-any.whl", hash = "sha256:aeb1ff123966c05833d26c7df7e1d54c1c6d32b612428b21677a2e921f1fecae", size = 93578, upload-time = "2026-09-16T07:47:20.799Z" },
+]
+
+[[package]]
 name = "orjson"
 version = "3.11.9"
 source = { registry = "https://pypi.org/simple" }
@@ -1821,6 +1830,7 @@ dependencies = [
     { name = "loguru" },
     { name = "lru-dict" },
     { name = "mtproto", extra = ["http", "tgcrypto", "ws"] },
+    { name = "nats-py" },
     { name = "pillow" },
     { name = "pydantic-settings" },
     { name = "pylinkify" },
@@ -1879,6 +1889,7 @@ requires-dist = [
     { name = "loguru", specifier = ">=0.7.3,<1.0.0" },
     { name = "lru-dict", specifier = ">=1.4.1,<2.0.0" },
     { name = "mtproto", extras = ["tgcrypto", "http", "ws"], git = "https://github.com/RuslanUC/mtproto.git?rev=2698018c402029d64138a43670cf1781b39b3466" },
+    { name = "nats-py", specifier = ">=2.16.0,<3.0.0" },
     { name = "pillow", specifier = ">=12.3.0,<13.0.0" },
     { name = "pydantic-settings", specifier = ">=2.15.0,<3.0.0" },
     { name = "pylinkify", git = "https://github.com/RuslanUC/pylinkify.git" },

@@ -19,7 +19,6 @@ from piltover.db.models import AuthKey, UserAuthorization, UserPassword, TempAut
     PhoneCodePurpose
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.session import SessionManager
 from piltover.tl import BindAuthKeyInner, UpdatesTooLong, Authorization, UpdateLoginToken, UpdateShort
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
     SignUp_133, LogOut, ResetAuthorizations, AcceptLoginToken, ResendCode, CancelCode, ImportBotAuthorization
@@ -298,11 +297,12 @@ async def accept_login_token(request: AcceptLoginToken, user_id: int) -> Authori
     if (temp_key_id := await AuthKey.get_temp_id(login.key_id)) is not None:
         key_ids.append(temp_key_id)
 
-    await SessionManager.send(
+    await request_ctx.get().worker.send_message_to_client(
         UpdateShort(
             update=UpdateLoginToken(),
             date=int(time()),
-        ), key_id=key_ids,
+        ),
+        key_id=key_ids,
     )
 
     return auth.to_tl()
@@ -316,7 +316,8 @@ async def log_out() -> LoggedOut:
 
 @handler.on_request(ResetAuthorizations, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def reset_authorizations(user: User) -> bool:
-    auth_id = request_ctx.get().auth_id
+    ctx = request_ctx.get()
+    auth_id = ctx.auth_id
     this_auth = await UserAuthorization.get(id=auth_id).only("created_at")
 
     if (this_auth.created_at + timedelta(days=1)) > datetime.now(UTC):
@@ -330,7 +331,7 @@ async def reset_authorizations(user: User) -> bool:
 
     await UserAuthorization.filter(id__in=[auth.id for auth in auths]).delete()
 
-    await SessionManager.send(UpdatesTooLong(), key_id=keys)
+    await ctx.worker.send_message_to_client(UpdatesTooLong(), key_id=keys)
 
     return True
 

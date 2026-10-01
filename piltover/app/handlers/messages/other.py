@@ -2,11 +2,11 @@ from fastrand import xorshift128plus_bytes
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import process_send_as
+from piltover.context import request_ctx
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Presence, ChatParticipant, DefaultSendAs, Channel, Chat
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.session import SessionManager
 from piltover.tl import UpdateUserTyping, DefaultHistoryTTL, UpdateChatUserTyping, UpdateChannelUserTyping
 from piltover.tl.functions.messages import SetTyping, GetDhConfig, GetDefaultHistoryTTL, SetDefaultHistoryTTL, \
     SaveDefaultSendAs
@@ -20,11 +20,12 @@ handler = MessageHandler("messages.other")
 
 @handler.on_request(SetTyping)
 async def set_typing(request: SetTyping, user: User) -> bool:
+    worker = request_ctx.get().worker
     peer_type, peer_target_id = Peer.type_and_id_from_input_raise(user.id, request.peer)
     if peer_type is PeerType.SELF:
         return True
     elif peer_type is PeerType.USER:
-        await SessionManager.send(
+        await worker.send_message_to_client(
             upd.UpdatesWithDefaults(
                 updates=[UpdateUserTyping(user_id=user.id, action=request.action)],
                 users=[await user.to_tl()],
@@ -40,7 +41,7 @@ async def set_typing(request: SetTyping, user: User) -> bool:
         if peer_chat is None:
             raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-        await SessionManager.send(
+        await worker.send_message_to_client(
             upd.UpdatesWithDefaults(
                 updates=[UpdateChatUserTyping(
                     chat_id=peer_target_id,
@@ -67,7 +68,7 @@ async def set_typing(request: SetTyping, user: User) -> bool:
         if participant is not None and not channel.can_send_messages(participant):
             raise ErrorRpc(error_code=400, error_message="USER_BANNED_IN_CHANNEL")
 
-        await SessionManager.send(
+        await worker.send_message_to_client(
             upd.UpdatesWithDefaults(
                 updates=[UpdateChannelUserTyping(
                     channel_id=Channel.make_id_from(peer_target_id),

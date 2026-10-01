@@ -25,7 +25,6 @@ from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
-from piltover.session import SessionManager
 from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     InputChannelFromMessage, InputChannel, ChannelFull, PhotoEmpty, PeerNotifySettings, MessageActionChatEditTitle, \
     InputMessageID, InputMessageReplyTo, ChannelParticipantsRecent, ChannelParticipantsAdmins, \
@@ -185,7 +184,7 @@ async def _add_user_to_channel(channel: Channel, peer_channel: Peer, user_id: in
     if user_is_creator:
         await channel.sync_admins_count(False)
     await Dialog.create_or_unhide(user_id, peer_channel)
-    await SessionManager.subscribe_to_channel(channel.id, [user_id])
+    await request_ctx.get().worker.subscribe_to_channel(channel.id, [user_id])
 
     return participant
 
@@ -1008,7 +1007,7 @@ async def invite_to_channel(request: InviteToChannel, user_id: int) -> InvitedUs
         ).values_list("id", flat=True)
     )).delete()
 
-    await SessionManager.subscribe_to_channel(channel.id, added_user_ids)
+    await request_ctx.get().worker.subscribe_to_channel(channel.id, added_user_ids)
 
     for added_user_id in added_user_ids:
         await upd.update_channel_for_user(channel, added_user_id)

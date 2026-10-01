@@ -51,6 +51,7 @@ dependencies = [
     "pylinkify @ git+https://github.com/RuslanUC/pylinkify.git",
     "pydantic-settings (>=2.15.0,<3.0.0)",
     "gmpy2>=2.3.1",
+    "nats-py>=2.16.0,<3.0.0",
 ]
 
 [project.optional-dependencies]

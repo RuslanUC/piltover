@@ -14,15 +14,13 @@ from mtproto.enums import TransportEvent
 from mtproto.transport import Connection
 from mtproto.transport.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMessagePacket, \
     DecryptedMessagePacket, ErrorPacket, QuickAckPacket, BasePacket
-from taskiq import AsyncTaskiqTask, TaskiqResult, TaskiqResultTimeoutError
-from taskiq.brokers.inmemory_broker import InmemoryResultBackend
-from taskiq.kicker import AsyncKicker
+from nats.aio.msg import Msg
 
 from piltover.auth_data import AuthData, GenAuthData
 from piltover.exceptions import Disconnection, InvalidConstructorException, Unreachable
 from piltover.gateway._keygen_handlers import KEYGEN_HANDLERS
 from piltover.gateway._system_handlers import SYSTEM_HANDLERS
-from piltover.session import Session, SessionManager
+from piltover.session import Session
 from piltover.tl import NewSessionCreated, Long, Int, RpcError, ReqPq, ReqPqMulti, MsgsAck
 from piltover.tl.core_types import TLObject, MsgContainer, Message, RpcResult
 from piltover.tl.functions.auth import BindTempAuthKey
@@ -58,7 +56,7 @@ class Client:
         self.gen_auth_data: GenAuthData | None = None
         self.empty_session = Session(0)
 
-        self.disconnect_timeout: asyncio.Timeout | None = None
+        self.disconnect_timeout = asyncio.timeout(None)
         self.write_lock = asyncio.Lock()
 
         self.active_sessions = LRU(4, callback=self._session_evicted)
@@ -68,24 +66,25 @@ class Client:
         self.loop = asyncio.get_running_loop()
         self.tasks = set()
 
-    @staticmethod
-    def _session_evicted(_: Any, session: Session) -> None:
-        session.disconnect()
+    def _session_evicted(self, _: Any, session: Session) -> None:
+        self.tasks.add(task := self.loop.create_task(session.disconnect()))
+        task.add_done_callback(self.tasks.discard)
 
     def _get_cached_session(self, auth_key_id: int, session_id: int) -> Session | None:
         uniq_id = (auth_key_id, session_id)
         if uniq_id in self.active_sessions:
             return self.active_sessions[uniq_id]
 
-    def _get_session(self, session_id: int, auth_data: AuthData) -> tuple[Session, bool]:
+    async def _get_session(self, session_id: int, auth_data: AuthData) -> tuple[Session, bool]:
         if (cached := self._get_cached_session(auth_data.auth_key_id, session_id)) is not None:
             return cached, False
 
-        session, created = SessionManager.get_or_create(session_id, self, auth_data)
-        session.connect(self)
+        # TODO: create/resume session via nats or something
+        session = Session(client=self, session_id=session_id, auth_data=auth_data)
+        await session.connect(self)
 
         self.active_sessions[session.uniq_id()] = session
-        return session, created
+        return session, True
 
     async def read_packet(self) -> MessagePacket | None:
         packet = self.conn.next_event()
@@ -154,24 +153,6 @@ class Client:
             obj.write(),
         ))
 
-    async def _kiq(self, obj: TLObject, session: Session, message_id: int | None = None) -> AsyncTaskiqTask:
-        # TODO: dont do .write.hex(), RpcResponse somehow doesn't need encoding it manually, check how exactly
-        call_rpc = CallRpc(
-            obj=obj,
-            layer=session.layer,
-            auth_key_id=session.auth_data.auth_key_id,
-            perm_auth_key_id=session.auth_data.perm_auth_key_id,
-            session_id=session.session_id,
-            message_id=message_id,
-            auth_id=session.auth_id,
-            user_id=session.user_id,
-            is_bot=session.is_bot,
-            mfa_pending=session.mfa_pending,
-        ).write().hex()
-
-        with measure_time(".kiq()"):
-            return await AsyncKicker(task_name="handle_tl_rpc", broker=self.server.broker, labels={}).kiq(call_rpc)
-
     async def handle_unencrypted_message(self, obj: TLObject) -> None:
         # TODO: move it to worker (and add db models to save auth key generation state)
         if obj.tlid() not in KEYGEN_HANDLERS:
@@ -214,7 +195,7 @@ class Client:
             if session is None:
                 if auth_data is None:
                     auth_data = await self._get_auth_data(packet.auth_key_id)
-                session, _ = self._get_session(decrypted.session_id, auth_data)
+                session, _ = await self._get_session(decrypted.session_id, auth_data)
                 session.update_salts_maybe(self.server.salt_key)
 
             if packet.needs_quick_ack:
@@ -350,14 +331,11 @@ class Client:
     async def worker(self):
         logger.debug("Client connected: {addr}", addr=self.peername)
 
-        loop = asyncio.get_running_loop()
-        self.disconnect_timeout = asyncio.timeout(None)
-
         done, pending = await asyncio.wait(
             [
-                loop.create_task(self._timer_task()),
-                loop.create_task(self._worker_loop_recv()),
-                loop.create_task(self._worker_loop_send()),
+                self.loop.create_task(self._timer_task()),
+                self.loop.create_task(self._worker_loop_recv()),
+                self.loop.create_task(self._worker_loop_send()),
             ],
             return_when=asyncio.FIRST_COMPLETED,
         )
@@ -382,35 +360,50 @@ class Client:
             except ConnectionResetError:
                 pass
 
-            for session in self.active_sessions.values():
-                logger.info(f"Session {session.session_id} removed")
-                session.disconnect()
-
+            sessions = list(self.active_sessions.values())
             self.active_sessions.clear()
 
-    @staticmethod
-    async def _wait_result_with_ack(
-            task: AsyncTaskiqTask[str], message_id: int, session: Session, method_name: str,
-    ) -> TaskiqResult[str]:
+            await asyncio.gather(*(
+                session.disconnect()
+                for session in sessions
+            ))
+
+    async def _send_request_to_worker_get_response(self, request: Message[TLObject], session: Session) -> Msg:
+        call_rpc = CallRpc(
+            obj=request.obj,
+            layer=session.layer,
+            auth_key_id=session.auth_data.auth_key_id,
+            perm_auth_key_id=session.auth_data.perm_auth_key_id,
+            session_id=session.session_id,
+            message_id=request.message_id,
+            auth_id=session.auth_id,
+            user_id=session.user_id,
+            is_bot=session.is_bot,
+            mfa_pending=session.mfa_pending,
+        )
+
+        loop = asyncio.get_event_loop()
         start_time = time.perf_counter()
-        result = None
+
+        first_timeout = loop.create_future()
+        response = loop.create_task(self.server.nats.request("piltover.worker.rpc.public", call_rpc.write(), 15))
+
+        done, pending = await asyncio.wait((first_timeout, response), timeout=1.5, return_when=asyncio.FIRST_COMPLETED)
+        first_timeout.cancel()
+
+        if response not in done:
+            logger.warning(f"Task timeout exceeded, sending ack to message {request.message_id}")
+            await session.enqueue(MsgsAck(msg_ids=[request.message_id]), False)
 
         try:
-            result = await task.wait_result(timeout=1.5)
-            return result
-        except TaskiqResultTimeoutError as e:
-            logger.opt(exception=e).warning(f"Task timeout exceeded, sending ack to message {message_id}")
-            await session.enqueue(MsgsAck(msg_ids=[message_id]), False)
-            result = await task.wait_result(timeout=15)
-            return result
+            return await response
         finally:
             end_time = time.perf_counter()
             logger.debug(
-                "\"{method_name}\" ({message_id}) took {time_taken:.2f} ms to execute (taskiq reported {taskiq_time}s)",
-                method_name=method_name,
-                message_id=message_id,
+                "\"{method_name}\" ({message_id}) took {time_taken:.2f} ms to execute",
+                method_name=request.obj.tlname(),
+                message_id=request.message_id,
                 time_taken=(end_time - start_time) * 1000,
-                taskiq_time=result.execution_time if result else None,
             )
 
     async def _process_request(self, request: Message, session: Session) -> RpcResult | None:
@@ -418,13 +411,9 @@ class Client:
             return await SYSTEM_HANDLERS[request.obj.tlid()](self, request, session)
 
         with measure_time("\"execute task\""):
-            with measure_time("_kiq()"):
-                task = await self._kiq(request.obj, session, request.message_id)
-            with measure_time(".wait_result()"):
+            with measure_time("._send_request_to_worker_get_response()"):
                 try:
-                    task_result = await self._wait_result_with_ack(
-                        task, request.message_id, session, request.obj.__class__.__name__
-                    )
+                    task_result = await self._send_request_to_worker_get_response(request, session)
                 except Exception as e:  # noqa: BLE001
                     logger.opt(exception=e).error(f"Failed to get result for request {request!r}")
                     return RpcResult(
@@ -432,24 +421,13 @@ class Client:
                         result=RpcError(error_code=500, error_message="INTERNAL_SERVER_ERROR_TIMEOUT"),
                     )
 
-        if task_result.is_err:
-            logger.opt(exception=task_result.error).error("An error occurred in worker while processing request.")
-            return RpcResult(
-                req_msg_id=request.message_id,
-                result=RpcError(error_code=500, error_message="INTERNAL_SERVER_ERROR"),
-            )
-
-        result = task_result.return_value
-        if not isinstance(self.server.broker.result_backend, InmemoryResultBackend):
-            result = RpcResponse.read(BytesIO(bytes.fromhex(result)))
+        result = RpcResponse.read(BytesIO(task_result.data))
         if not isinstance(result, RpcResponse):
             logger.error(f"Got response from worker that is not a RpcResponse object: {result}")
             return RpcResult(
                 req_msg_id=request.message_id,
                 result=RpcError(error_code=500, error_message="INTERNAL_SERVER_ERROR"),
             )
-
-        # logger.trace(f"Got RpcResponse from worker: {result!r}")
 
         if result.transport_error is not None:
             raise Disconnection(result.transport_error or None)

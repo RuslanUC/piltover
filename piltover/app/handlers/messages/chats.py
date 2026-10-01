@@ -18,7 +18,6 @@ from piltover.db.models import User, Peer, Chat, File, ChatParticipant, PrivacyR
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
-from piltover.session import SessionManager
 from piltover.tl import MissingInvitee, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, MessageActionChatCreate, \
     MessageActionChatEditTitle, MessageActionChatAddUser, \
@@ -612,7 +611,9 @@ async def migrate_chat(request: MigrateChat, user_id: int) -> Updates:
             Dialog.filter(peer__chat=chat).values_list("id", flat=True)
         )).update(visible=False)
 
-    await SessionManager.subscribe_to_channel(channel.id, [participant.user_id for participant in participants])
+    await request_ctx.get().worker.subscribe_to_channel(
+        channel.id, [participant.user_id for participant in participants]
+    )
 
     user_ids = [participant.user_id for participant in participants]
     updates = await upd.migrate_chat(chat, channel, user_ids)

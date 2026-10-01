@@ -2,26 +2,25 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import os
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from collections.abc import AsyncIterator
+from typing import cast
 
 import uvloop
 from loguru import logger
-from taskiq import TaskiqScheduler, InMemoryBroker
+from nats import NATS
 from tortoise import Tortoise, connections
 
 from piltover.app.handlers import register_handlers
 from piltover.app.utils.app_create_system_data import create_system_data
-from piltover.app.utils.config_helper import make_broker_from_config, make_message_broker_from_config
 from piltover.cache import Cache
 from piltover.config import TORTOISE_ORM, GATEWAY_CONFIG, SYSTEM_CONFIG
 from piltover.gateway import Gateway
-from piltover.scheduler import OrmDatabaseScheduleSource
-from piltover.session import SessionManager
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
 from piltover.utils.debug.measure_queryset_times import patch_queryset_for_measurement
 from piltover.utils.debug.tracing import Tracing
@@ -74,6 +73,8 @@ class PiltoverApp:
             self, data_dir: Path, privkey: str | Path, pubkey: str | Path, host: str = "0.0.0.0", port: int = 4430,
             salt_key: bytes | None = None,
     ):
+        self._data_dir = data_dir
+
         self._host = host
         self._port = port
 
@@ -90,56 +91,27 @@ class PiltoverApp:
         self._private_key = privkey.read_text()
         self._public_key = pubkey.read_text()
 
-        broker = make_broker_from_config()
-        message_broker = make_message_broker_from_config(broker)
+        if salt_key is None:
+            salt_key = os.urandom(32)
+            logger.info(f"Salt key is None, generating new one: {base64.b64encode(salt_key).decode('latin1')}")
+
+        self._nats = NATS()
 
         self._gateway = Gateway(
             data_dir=data_dir,
-            broker=broker,
-            message_broker=message_broker,
-            host=host,
-            port=port,
             server_keys=Keys(
                 private_key=self._private_key,
                 public_key=self._public_key,
             ),
             salt_key=salt_key,
+            nats=self._nats,
         )
 
-        self._worker: Worker | None = None
-        self._scheduler: TaskiqScheduler | None = None
+    def _run_in_memory_scheduler(self) -> tuple[None, None] | tuple[object, asyncio.Task]:
+        if not SYSTEM_CONFIG.run_all_in_one:
+            return None, None
 
-        if isinstance(broker, InMemoryBroker):
-            logger.info(
-                "Running worker and scheduler in the same process as gateway "
-                "because InMemoryBroker is being used"
-            )
-            self._worker = worker = Worker(
-                data_dir=data_dir,
-                public_key=self._public_key,
-                broker=broker,
-                message_broker=message_broker,
-            )
-            register_handlers(worker)
-            self._scheduler = TaskiqScheduler(broker, sources=[OrmDatabaseScheduleSource()])
-
-    def _run_in_memory_scheduler(
-            self, update_interval: timedelta | None = None, loop_interval: timedelta | None = None,
-    ) -> asyncio.Task | None:
-        if self._scheduler is None:
-            return None
-
-        from taskiq.cli.scheduler.run import run_scheduler
-        from taskiq.cli.scheduler.args import SchedulerArgs
-
-        return asyncio.create_task(run_scheduler(
-            SchedulerArgs(
-                scheduler=self._scheduler,
-                modules=[],
-                update_interval=update_interval,
-                loop_interval=loop_interval,
-            )
-        ))
+        return None, None  # TODO: scheduler
 
     @staticmethod
     def _run_telegram_integration() -> asyncio.Task | None:
@@ -172,25 +144,32 @@ class PiltoverApp:
             args.create_peer_colors, args.create_languages, args.create_system_stickersets, args.create_emoji_groups,
         )
 
-        scheduler_task = self._run_in_memory_scheduler()
+        worker: Worker | None = None
+        if SYSTEM_CONFIG.run_all_in_one:
+            worker = Worker(self._data_dir, self._public_key, self._nats)
+            register_handlers(worker)
+
+        _, scheduler_task = self._run_in_memory_scheduler()
         telegram_integration_task = self._run_telegram_integration()
 
         logger.success(f"Running on {self._host}:{self._port}")
 
-        monitor = None
-        if SYSTEM_CONFIG.debug_enable_aiomonitor:
-            import aiomonitor
-            loop = asyncio.get_running_loop()
-            monitor = aiomonitor.start_monitor(loop)
+        await self._nats.connect()
 
-        await self._gateway.serve()
+        if worker is not None:
+            await worker.startup()
+
+        server = await asyncio.start_server(self._gateway.accept_client, self._host, self._port)
+        async with server:
+            await server.serve_forever()
+
         if scheduler_task is not None:
             await scheduler_task
         if telegram_integration_task is not None:
             await telegram_integration_task
 
-        if SYSTEM_CONFIG.debug_enable_aiomonitor:
-            monitor.stop()
+        await self._nats.flush()
+        await self._nats.close()
 
     @asynccontextmanager
     async def run_test(
@@ -199,9 +178,9 @@ class PiltoverApp:
             create_system_stickersets: bool = False, create_emoji_groups: bool = False, run_scheduler: bool = False,
             run_actual_server: bool = False, scheduler_update_interval: timedelta | None = None,
             scheduler_loop_interval: timedelta | None = None,
-    ) -> AsyncIterator[Gateway]:
-        if self._worker is None:
-            raise RuntimeError("PiltoverApp._worker must be set when testing")
+    ) -> AsyncIterator[tuple[Gateway, str, int]]:
+        if not SYSTEM_CONFIG.run_all_in_one:
+            raise ValueError("Test server requires `run_all_in_one` to be set")
 
         if SYSTEM_CONFIG.debug_tracing:
             Tracing.init(SYSTEM_CONFIG.debug_tracing.backend, zipkin_address=SYSTEM_CONFIG.debug_tracing.zipkin_address)
@@ -218,34 +197,36 @@ class PiltoverApp:
             create_languages, create_system_stickersets, create_emoji_groups,
         )
 
+        worker = Worker(self._data_dir, self._public_key, self._nats, _testing=True)
+        register_handlers(worker)
+
         from piltover.app.handlers import testing
-        if not testing.handler.registered:
-            self._worker.register_handler(testing.handler)
+        worker.register_handler(testing.handler)
 
-        await self._gateway.broker.startup()
-
-        scheduler_task = None
+        scheduler_task: asyncio.Task | None = None
         if run_scheduler:
-            scheduler_task = self._run_in_memory_scheduler(scheduler_update_interval, scheduler_loop_interval)
+            _, scheduler_task = self._run_in_memory_scheduler()
+
+        await self._gateway.nats.connect()
+
+        await worker.startup()
 
         if run_actual_server:
             server = await asyncio.start_server(self._gateway.accept_client, "127.0.0.1", 0)
             async with server:
-                self._gateway.host, self._gateway.port = server.sockets[0].getsockname()
-                yield self._gateway
+                addr, port = cast(tuple[str, int], server.sockets[0].getsockname())
+                yield self._gateway, addr, port
         else:
-            self._gateway.host = "0.0.0.0"
-            self._gateway.port = -1
-            yield self._gateway
+            yield self._gateway, "0.0.0.0", -1
 
         if scheduler_task is not None:
             scheduler_task.cancel()
             await scheduler_task
 
-        await self._gateway.broker.shutdown()
+        await self._nats.flush()
+        await self._nats.close()
         await connections.close_all(True)
         await Cache.obj.clear()
-        SessionManager.sessions.clear()
 
 
 args: ArgsNamespace

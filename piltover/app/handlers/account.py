@@ -24,7 +24,6 @@ from piltover.db.models import User, UserAuthorization, Peer, Presence, Username
     TaskIqScheduledDeleteUser, UserEmojiStatus, AuthKey, Channel, ProtectedUsername, UploadingFileBase
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
-from piltover.session import SessionManager
 from piltover.tl import PeerNotifySettings as TLPeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, \
     AutoDownloadSettings, PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, Long, \
     UpdatesTooLong, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty, \
@@ -47,7 +46,6 @@ from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, Pr
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait, ThemesNotModified, WallPapersNotModified, WallPapers
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms
-from piltover.tl.types.internal import SetSessionInternalPush
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import btoi
 from piltover.utils.users_chats_channels import UsersChatsChannels
@@ -173,13 +171,8 @@ async def register_device(request: RegisterDevice, user_id: int) -> bool:
     except ValueError:
         raise ErrorRpc(error_code=400, error_message="TOKEN_INVALID")  # noqa: B904
 
-    key_id = request_ctx.get().auth_key_id
-
-    await SessionManager.broker.send(SetSessionInternalPush(
-        key_id=key_id,
-        session_id=sess_id,
-        user_id=user_id,
-    ))
+    ctx = request_ctx.get()
+    await ctx.worker.subscribe_to_internal_push(ctx.auth_key_id, sess_id)
 
     return True
 
@@ -509,7 +502,8 @@ async def change_auth_settings(request: ChangeAuthorizationSettings, user_id: in
 
 @handler.on_request(ResetAuthorization, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def reset_authorization(request: ResetAuthorization, user_id: int) -> bool:
-    auth_id = request_ctx.get().auth_id
+    ctx = request_ctx.get()
+    auth_id = ctx.auth_id
     this_auth = await UserAuthorization.get(id=auth_id).only("id", "created_at")
 
     if (this_auth.created_at + timedelta(days=1)) > datetime.now(UTC):
@@ -528,7 +522,7 @@ async def reset_authorization(request: ResetAuthorization, user_id: int) -> bool
     await auth.delete()
 
     # TODO: also notify gateway that auth needs to be refreshed
-    await SessionManager.send(UpdatesTooLong(), key_id=keys)
+    await ctx.worker.send_message_to_client(UpdatesTooLong(), key_id=keys)
 
     return True
 
@@ -669,7 +663,7 @@ async def _delete_account(user_id: int) -> None:
 
     await UserAuthorization.filter(id__in=auth_ids).delete()
 
-    await SessionManager.send(UpdatesTooLong(), key_id=key_ids, auth_id=auth_ids)
+    await request_ctx.get().worker.send_message_to_client(UpdatesTooLong(), key_id=key_ids, auth_id=auth_ids)
 
 
 @handler.on_request(

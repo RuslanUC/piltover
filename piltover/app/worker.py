@@ -1,41 +1,51 @@
+import asyncio
 from pathlib import Path
 
-from taskiq import TaskiqEvents, TaskiqState
+import uvloop
+from nats import NATS
 from tortoise import Tortoise
 
 from piltover.app.handlers import register_handlers
-from piltover.app.utils.config_helper import make_broker_from_config, make_message_broker_from_config
 from piltover.cache import Cache
 from piltover.config import SYSTEM_CONFIG, TORTOISE_ORM, WORKER_CONFIG
 from piltover.utils.debug.tracing import Tracing
 from piltover.worker import Worker
 
 
-async def _run(_: TaskiqState) -> None:
+async def main() -> None:
+    pubkey = Path(WORKER_CONFIG.pubkey_file)
+    if not pubkey.exists():
+        raise RuntimeError(f"Public key at path \"{pubkey.absolute()}\" does not exist!")
+
+    nats = NATS()
+
+    worker = Worker(
+        data_dir=SYSTEM_CONFIG.data_dir,
+        public_key=pubkey.read_text(),
+        nats=nats,
+    )
+
+    register_handlers(worker)
+
+    Cache.init(
+        SYSTEM_CONFIG.cache.backend,
+        endpoint=SYSTEM_CONFIG.cache.endpoint,
+        port=SYSTEM_CONFIG.cache.port,
+        db=SYSTEM_CONFIG.cache.db,
+    )
+
     if SYSTEM_CONFIG.debug_tracing:
         Tracing.init(SYSTEM_CONFIG.debug_tracing.backend, zipkin_address=SYSTEM_CONFIG.debug_tracing.zipkin_address)
     await Tortoise.init(config=TORTOISE_ORM)
 
+    await nats.connect()
+    await worker.startup()
 
-pubkey = Path(WORKER_CONFIG.pubkey_file)
-if not pubkey.exists():
-    raise RuntimeError(f"Public key at path \"{pubkey.absolute()}\" does not exist!")
+    await asyncio.get_running_loop().create_future()
 
-broker = make_broker_from_config()
-broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, _run)
 
-worker = Worker(
-    data_dir=SYSTEM_CONFIG.data_dir,
-    public_key=pubkey.read_text(),
-    broker=broker,
-    message_broker=make_message_broker_from_config(broker),
-)
-
-register_handlers(worker)
-
-Cache.init(
-    SYSTEM_CONFIG.cache.backend,
-    endpoint=SYSTEM_CONFIG.cache.endpoint,
-    port=SYSTEM_CONFIG.cache.port,
-    db=SYSTEM_CONFIG.cache.db,
-)
+if __name__ == "__main__":
+    try:
+        uvloop.run(main())
+    except KeyboardInterrupt:
+        pass

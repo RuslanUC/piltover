@@ -4,8 +4,8 @@ from types import NoneType
 from piltover.app.bot_handlers.interaction_handler import BotInteractionHandler
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.app.utils.updates_manager import UpdatesWithDefaults
+from piltover.context import request_ctx
 from piltover.db.models import Peer, MessageRef
-from piltover.session import SessionManager
 from piltover.tl import UpdateServiceNotification, MessageMediaEmpty, objects
 
 _text_notif_text, _text_notif_entities_dicts = FormatableTextWithEntities(
@@ -43,6 +43,6 @@ class PingTestBotBotInteractionHandler(BotInteractionHandler[NoneType, NoneType]
                 )
             ]
         )
-        await SessionManager.send(updates_to_send, peer.owner_id)
+        await request_ctx.get().worker.send_message_to_client(updates_to_send, peer.owner_id)
 
         return await send_bot_message(peer, "test")

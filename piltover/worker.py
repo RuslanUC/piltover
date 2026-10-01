@@ -1,30 +1,27 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Awaitable
 from inspect import getfullargspec
 from io import BytesIO
 from pathlib import Path
 from typing import Any, TypeVar, cast, Protocol, ParamSpec
-from collections.abc import Callable, Awaitable
 
 from loguru import logger
-from taskiq import TaskiqEvents, AsyncTaskiqTask
-from taskiq.abc.broker import AsyncBroker
-from taskiq.brokers.inmemory_broker import InmemoryResultBackend
-from taskiq.kicker import AsyncKicker
+from nats import NATS
+from nats.aio.msg import Msg
 
+from piltover import context
 from piltover.context import RequestContext, request_ctx, NeedContextValuesContext
 from piltover.db.models import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.message_brokers.base_broker import BaseMessageBroker
-from piltover.pubsub.in_memory_pubsub import InMemoryPubSub
-from piltover.session import SessionManager
 from piltover.storage import LocalFileStorage
 from piltover.tl import TLObject, RpcError, TLRequest
 from piltover.tl.core_types import RpcResult
 from piltover.tl.functions.internal import CallRpc, CallRpcInternal
 from piltover.tl.layer_info import layer
-from piltover.tl.types.internal import RpcResponse
+from piltover.tl.types.internal import RpcResponse, ObjectWithLayerRequirement, MessageToClient, SetInternalPush, \
+    NotifyInternalPush, ChannelSubscribe, ChannelUnsubscribe, SendUpdatesTooLong
 from piltover.utils import get_public_key_fingerprint
 from piltover.utils.debug import measure_time
 
@@ -112,51 +109,27 @@ class MessageHandler:
         if clear:
             handler.request_handlers.clear()
 
-        handler.registered = True
+        if not isinstance(self, Worker) or not self._testing:
+            handler.registered = True
 
 
 class Worker(MessageHandler):
-    def __init__(self, data_dir: Path, public_key: str, broker: AsyncBroker, message_broker: BaseMessageBroker) -> None:
+    def __init__(self, data_dir: Path, public_key: str, nats: NATS, *, _testing: bool = False) -> None:
         super().__init__()
 
         self._storage = LocalFileStorage(data_dir)
         self.public_key = public_key
         self.fingerprint: int = get_public_key_fingerprint(self.public_key)
 
-        self.broker = broker
-        self.message_broker = message_broker
+        self.nats = nats
+        self._testing = _testing
 
-        # TODO: add RedisPubSub
-        self.pubsub = InMemoryPubSub()
+    async def startup(self) -> None:
+        await self.nats.subscribe("piltover.worker.rpc.public", queue="workers", cb=self._handle_tl_rpc)
+        await self.nats.subscribe("piltover.worker.rpc.internal", queue="workers", cb=self._handle_tl_rpc_internal)
 
-        # https://github.com/taskiq-python/taskiq/issues/436
-        async def _handle_tl_rpc_measure_time(call_hex: str) -> RpcResponse | str:
-            return await self._handle_tl_rpc_measure_time(call_hex)
-
-        async def _handle_tl_rpc_internal(call: str) -> Any:
-            return await self._handle_tl_rpc_internal(call)
-
-        # self.broker.register_task(self._handle_tl_rpc, "handle_tl_rpc")
-        self.broker.register_task(_handle_tl_rpc_measure_time, "handle_tl_rpc")
-        self.broker.register_task(_handle_tl_rpc_internal, "handle_tl_rpc_internal")
-        self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)
-        self.broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, self._broker_shutdown)
-
-    async def _broker_startup(self, _) -> None:
-        SessionManager.set_broker(self.message_broker)
-        await self.pubsub.startup()
-
-    async def _broker_shutdown(self, _) -> None:
-        await self.pubsub.shutdown()
-
-    async def call_internal(self, request: TLObject) -> AsyncTaskiqTask[TLObject]:
-        return await AsyncKicker(
-            task_name="handle_tl_rpc_internal",
-            broker=self.broker,
-            labels={},
-        ).kiq(
-            call=CallRpcInternal(obj=request).write().hex(),
-        )
+    async def call_internal(self, request: TLObject) -> None:
+        await self.nats.publish("piltover.worker.rpc.internal", CallRpcInternal(obj=request).write())
 
     @classmethod
     async def get_user(cls, call: CallRpc, allow_mfa_pending: bool = False, with_username: bool = False) -> User | None:
@@ -171,32 +144,30 @@ class Worker(MessageHandler):
 
         return await query
 
-    async def _handle_tl_rpc_measure_time(self, call_hex: str) -> RpcResponse | str:
+    async def _handle_tl_rpc_measure_time(self, message: Msg) -> None:
         with measure_time("_handle_tl_rpc()"):
-            return await self._handle_tl_rpc(call_hex)
+            return await self._handle_tl_rpc(message)
 
-    def _err_response(self, req_msg_id: int, code: int, message: str) -> RpcResponse | str:
-        response = RpcResponse(obj=RpcResult(
-            req_msg_id=req_msg_id,
-            result=RpcError(error_code=code, error_message=message),
-        ))
+    @staticmethod
+    async def _reply_err(request: Msg, req_msg_id: int, code: int, message: str) -> None:
+        response = RpcResponse(
+            obj=RpcResult(
+                req_msg_id=req_msg_id,
+                result=RpcError(error_code=code, error_message=message),
+            )
+        )
 
-        if isinstance(self.broker.result_backend, InmemoryResultBackend):
-            return response
-        else:
-            return response.write().hex()
+        await request.respond(response.write())
 
-    def _err_response_internal(self, code: int, message: str) -> RpcError | str:
+    @staticmethod
+    async def _err_response_internal(request: Msg, code: int, message: str) -> None:
         response = RpcError(error_code=code, error_message=message)
+        if request.reply:
+            await request.respond(response.write())
 
-        if isinstance(self.broker.result_backend, InmemoryResultBackend):
-            return response
-        else:
-            return response.write().hex()
-
-    async def _handle_tl_rpc(self, call_hex: str) -> RpcResponse | str:
+    async def _handle_tl_rpc(self, message: Msg) -> None:
         with measure_time("read CallRpc"):
-            call = CallRpc.read(BytesIO(bytes.fromhex(call_hex)), True)
+            call = CallRpc.read(BytesIO(message.data), True)
 
         logger.trace("Got request: {call!r}", call=call)
 
@@ -204,16 +175,16 @@ class Worker(MessageHandler):
 
         if not (handler := self.request_handlers.get(call.obj.tlid())) or handler.is_internal:
             logger.warning("No handler found for obj: {obj}", obj=call.obj)
-            return self._err_response(req_message_id, 500, "NOT_IMPLEMENTED")
+            return await self._reply_err(message, req_message_id, 500, "NOT_IMPLEMENTED")
         if handler.is_internal:
             logger.warning("Client tried to execute internal request: {call!r}", call=call)
-            return self._err_response(req_message_id, 500, "NOT_IMPLEMENTED")
+            return await self._reply_err(message, req_message_id, 500, "NOT_IMPLEMENTED")
 
         # TODO: send this error from gateway
         if call.is_bot and handler.bots_not_allowed:
-            return self._err_response(req_message_id, 400, "BOT_METHOD_INVALID")
+            return await self._reply_err(message, req_message_id, 400, "BOT_METHOD_INVALID")
         elif not call.is_bot and handler.users_not_allowed:
-            return self._err_response(req_message_id, 400, "USER_BOT_REQUIRED")
+            return await self._reply_err(message, req_message_id, 400, "USER_BOT_REQUIRED")
 
         user = None
         if (handler.auth_required or handler.has_user_arg) and not handler.dont_fetch_user:
@@ -221,15 +192,15 @@ class Worker(MessageHandler):
                 with measure_time(".get_user(...)"):
                     user = await self.get_user(call, handler.allow_mfa_pending, handler.prefetch_username)
             except ErrorRpc as e:
-                return self._err_response(req_message_id, e.error_code, e.error_message)
+                return await self._reply_err(message, req_message_id, e.error_code, e.error_message)
 
             if user is None and handler.auth_required:
-                return self._err_response(req_message_id, 401, "AUTH_KEY_UNREGISTERED")
+                return await self._reply_err(message, req_message_id, 401, "AUTH_KEY_UNREGISTERED")
         elif handler.dont_fetch_user and handler.auth_required:
             if not call.user_id:
-                return self._err_response(req_message_id, 401, "AUTH_KEY_UNREGISTERED")
+                return await self._reply_err(message, req_message_id, 401, "AUTH_KEY_UNREGISTERED")
             if call.mfa_pending and not handler.allow_mfa_pending:
-                return self._err_response(req_message_id, 401, "SESSION_PASSWORD_NEEDED")
+                return await self._reply_err(message, req_message_id, 401, "SESSION_PASSWORD_NEEDED")
 
         ctx_token = request_ctx.set(RequestContext(
             cast(int, call.auth_key_id), call.perm_auth_key_id, req_message_id, cast(int, call.session_id), call.layer,
@@ -272,23 +243,20 @@ class Worker(MessageHandler):
             refresh_auth=handler.refresh_session,
         )
 
-        if isinstance(self.broker.result_backend, InmemoryResultBackend):
-            return response
-        else:
-            return response.write().hex()
+        return await message.respond(response.write())
 
-    async def _handle_tl_rpc_internal(self, call: str) -> Any:
+    async def _handle_tl_rpc_internal(self, message: Msg) -> None:
         with measure_time("read CallRpc"):
-            call = CallRpcInternal.read(BytesIO(bytes.fromhex(call)), True)
+            call = CallRpcInternal.read(BytesIO(message.data), True)
 
         logger.trace("Got internal request: {call!r}", call=call)
 
         if not (handler := self.request_handlers.get(call.obj.tlid())):
             logger.warning("No handler found for obj: {obj}", obj=call.obj)
-            return self._err_response_internal(500, "NOT_IMPLEMENTED")
+            return await self._err_response_internal(message, 500, "NOT_IMPLEMENTED")
         if not handler.is_internal:
             logger.warning("Tried to execute non-internal request: {call!r}", call=call)
-            return self._err_response_internal(500, "ERROR_METHOD_NOT_INTERNAL")
+            return await self._err_response_internal(message, 500, "ERROR_METHOD_NOT_INTERNAL")
 
         ctx_token = request_ctx.set(RequestContext(
             0, 0, 0, 0, layer, call.as_auth_id or 0, call.as_user or 0, self, self._storage,
@@ -314,7 +282,94 @@ class Worker(MessageHandler):
 
         logger.trace("Returning internal result: {result!r}", result=result)
 
-        if isinstance(self.broker.result_backend, InmemoryResultBackend):
-            return result
+        if message.reply:
+            await message.respond(result.write())
+
+    async def send_message_to_client(
+            self, obj: TLObject, user_id: int | list[int] | None = None, key_id: int | list[int] | None = None,
+            channel_id: int | list[int] | None = None, auth_id: int | list[int] | None = None,
+            ignore_session_id: int | None = None,
+    ) -> None:
+        if not user_id and not key_id and not channel_id and not auth_id:
+            return
+
+        user_ids = []
+        if isinstance(user_id, list):
+            user_ids = user_id
+        elif user_id is not None:
+            user_ids.append(user_id)
+
+        key_ids = []
+        if isinstance(key_id, list):
+            key_ids = key_id
+        elif key_id is not None:
+            key_ids.append(key_id)
+
+        channel_ids = []
+        if isinstance(channel_id, list):
+            channel_ids = channel_id
+        elif channel_id is not None:
+            channel_ids.append(channel_id)
+
+        auth_ids = []
+        if isinstance(auth_id, list):
+            auth_ids = auth_id
+        elif auth_id is not None:
+            auth_ids.append(auth_id)
+
+        ctx = NeedContextValuesContext()
+        if isinstance(obj, TLObject):
+            obj.check_for_ctx_values(ctx)
+
+        if ctx.any():
+            if isinstance(obj, ObjectWithLayerRequirement):
+                obj.object = ctx.to_tl(obj.object)
+                # TODO: this is (probably) a temporary fix (?)
+                #  note: probably can move the whole "layer requirement" thing into "*ToFormat"?
+                for field_ in obj.fields:
+                    field_.field = f"obj.{field_.field}"
+            else:
+                obj = ctx.to_tl(cast(TLObject, obj))
+
+        to_send = MessageToClient(ignore_session_id=ignore_session_id, obj=obj).write()
+
+        for publish_user_id in user_ids:
+            await self.nats.publish(f"piltover.client.user.{publish_user_id}", to_send)
+        for publish_key_id in key_ids:
+            await self.nats.publish(f"piltover.client.key.{publish_key_id}", to_send)
+        for publish_channel_id in channel_ids:
+            await self.nats.publish(f"piltover.client.channel-sub.{publish_channel_id}", to_send)
+        for publish_auth_id in auth_ids:
+            await self.nats.publish(f"piltover.client.auth.{publish_auth_id}", to_send)
+
+    async def subscribe_to_internal_push(self, key_id: int, session_id: int) -> None:
+        await self.nats.publish(f"piltover.client.session.{key_id}-{session_id}", SetInternalPush().write())
+
+    async def send_internal_push(self, user_id: int | list[int]) -> None:
+        if not user_id:
+            return
+
+        if isinstance(user_id, list):
+            user_ids = user_id
         else:
-            return result.write().hex()
+            user_ids = [user_id]
+
+        to_send = NotifyInternalPush().write()
+
+        for publish_user_id in user_ids:
+            await self.nats.publish(f"piltover.client.internal-push.{publish_user_id}", to_send)
+
+    async def subscribe_to_channel(self, channel_id: int, user_ids: list[int]) -> None:
+        to_send = ChannelSubscribe(channel_id=channel_id).write()
+        for user_id in user_ids:
+            await self.nats.publish(f"piltover.client.user.{user_id}", to_send)
+
+    async def unsubscribe_from_channel(self, channel_id: int, user_ids: list[int]) -> None:
+        to_send = ChannelUnsubscribe(channel_id=channel_id).write()
+        for user_id in user_ids:
+            await self.nats.publish(f"piltover.client.user.{user_id}", to_send)
+
+    async def send_updates_too_long(self, key_ids: list[int]) -> None:
+        to_send = SendUpdatesTooLong().write()
+        for key_id in key_ids:
+            await self.nats.publish(f"piltover.client.key.{key_id}", to_send)

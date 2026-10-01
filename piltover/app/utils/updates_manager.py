@@ -13,7 +13,6 @@ from piltover.db.models import User, State, Update, MessageDraft, Peer, Dialog, 
     Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery, SavedDialog, PrivacyRule, MessageRef, \
     PhoneCall, UserEmojiStatus, Username
 from piltover.exceptions import Unreachable
-from piltover.session import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
     UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
@@ -58,6 +57,8 @@ class UpdatesWithDefaults(Updates):
 async def send_message(
         user: User | int | None, messages: list[MessageRef], ignore_current: bool = True,
 ) -> Updates:
+    worker = request_ctx.get().worker
+
     result = None
     current_user_id = user.id if isinstance(user, User) else user
 
@@ -119,13 +120,13 @@ async def send_message(
         if target_user_id == current_user_id:
             result = updates
 
-        ignore_auth_id = request_ctx.get().auth_id if ignore_current and target_user_id == current_user_id else None
-        await SessionManager.send(updates, target_user_id, ignore_auth_id=ignore_auth_id)
+        ignore_sess_id = request_ctx.get().session_id if ignore_current and target_user_id == current_user_id else None
+        await worker.send_message_to_client(updates, target_user_id, ignore_session_id=ignore_sess_id)
 
     if updates_to_create:
         await Update.bulk_create(updates_to_create)
 
-    await SessionManager.send_internal_push(pts_users)
+    await worker.send_internal_push(pts_users)
 
     return result
 
@@ -152,7 +153,7 @@ async def send_message_channel(user_id: int, channel: Channel, message: MessageR
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
 
-    await SessionManager.send(
+    await request_ctx.get().worker.send_message_to_client(
         UpdatesWithDefaults(
             updates=[
                 UpdateMessageIDToFormat(
@@ -194,6 +195,8 @@ async def send_messages(
         messages: dict[Peer, list[MessageRef]], user: User | None = None,
         prepend_existing: list[MessageRef] | None = None,
 ) -> Updates | None:
+    worker = request_ctx.get().worker
+
     result_update = None
     result_pts = None
 
@@ -265,7 +268,7 @@ async def send_messages(
             chats=chats_and_channels,
         )
 
-        await SessionManager.send(updates, target_user_id)
+        await worker.send_message_to_client(updates, target_user_id)
         if user is not None and target_user_id == user.id:
             result_update = updates
             result_pts = new_pts
@@ -273,7 +276,7 @@ async def send_messages(
     if updates_to_create:
         await Update.bulk_create(updates_to_create)
 
-    await SessionManager.send_internal_push(pts_users)
+    await worker.send_internal_push(pts_users)
 
     if prepend_existing and user:
         if result_update is None:
@@ -355,7 +358,7 @@ async def send_messages_channel(
         )
 
         if result.updates:
-            await SessionManager.send(result, channel_id=channel.id)
+            await request_ctx.get().worker.send_message_to_client(result, channel_id=channel.id)
     else:
         result = UpdatesWithDefaults(updates=[])
 
@@ -409,7 +412,7 @@ async def delete_messages(user: User | int | None, messages: dict[User | int, li
         )
         updates_to_create.append(update)
 
-        await SessionManager.send(
+        await request_ctx.get().worker.send_message_to_client(
             UpdatesWithDefaults(
                 updates=[
                     UpdateDeleteMessages(
@@ -457,7 +460,7 @@ async def delete_messages_channel(channel: Channel, messages: list[int]) -> tupl
         chats=[await channel.to_tl()],
     )
 
-    await SessionManager.send(updates, channel_id=channel.id)
+    await request_ctx.get().worker.send_message_to_client(updates, channel_id=channel.id)
 
     return updates, new_pts
 
@@ -507,7 +510,7 @@ async def edit_message(user_id: int, messages: dict[Peer, MessageRef]) -> Update
         if user_id == peer.owner_id:
             result_update = update
 
-        await SessionManager.send(update, peer.owner_id)
+        await request_ctx.get().worker.send_message_to_client(update, peer.owner_id)
 
     await Update.bulk_create(updates_to_create)
     return result_update
@@ -546,7 +549,7 @@ async def edit_message_channel(channel: Channel, message: MessageRef) -> Updates
         chats=chats_and_channels,
     )
 
-    await SessionManager.send(updates, channel_id=channel.id)
+    await request_ctx.get().worker.send_message_to_client(updates, channel_id=channel.id)
 
     return updates
 
@@ -580,7 +583,7 @@ async def pin_dialog(user_id: int, peer: Peer, dialog: Dialog) -> None:
         chats=[*chats, *channels],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
 
 async def update_draft(user_id: int, peer: Peer, draft: MessageDraft | None) -> None:
@@ -609,7 +612,7 @@ async def update_draft(user_id: int, peer: Peer, draft: MessageDraft | None) -> 
         chats=[*chats, *channels],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
 
 async def update_drafts(user_id: int, peers: list[Peer], drafts: Collection[MessageDraft | None]) -> Updates:
@@ -649,7 +652,7 @@ async def update_drafts(user_id: int, peers: list[Peer], drafts: Collection[Mess
         chats=[*chats, *channels],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -683,7 +686,7 @@ async def reorder_pinned_dialogs(user_id: int, dialogs: list[Dialog]) -> None:
         chats=[*chats, *channels],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
 
 async def pin_messages(
@@ -772,7 +775,7 @@ async def pin_messages(
             user_pts = new_pts
             user_pts_count = len(messages)
 
-        await SessionManager.send(update, peer.owner_id)
+        await request_ctx.get().worker.send_message_to_client(update, peer.owner_id)
 
     await Update.bulk_create(updates_to_create)
     return user_pts, user_pts_count, result_update
@@ -839,7 +842,7 @@ async def pin_channel_messages(channel: Channel, messages: list[MessageRef]) -> 
         users=[],
         chats=[await channel.to_tl()],
     )
-    await SessionManager.send(updates_to_send, channel_id=channel.id)
+    await request_ctx.get().worker.send_message_to_client(updates_to_send, channel_id=channel.id)
 
     await ChannelUpdate.bulk_create(updates_to_create)
     return pts, len(messages), updates_to_send
@@ -864,10 +867,13 @@ async def update_user(user: User) -> None:
     )
     target_user_ids.append(user.id)
 
-    await SessionManager.send(UpdatesWithDefaults(
-        updates=[UpdateUser(user_id=user.id)],
-        users=[await user.to_tl()],
-    ), target_user_ids)
+    await request_ctx.get().worker.send_message_to_client(
+        UpdatesWithDefaults(
+            updates=[UpdateUser(user_id=user.id)],
+            users=[await user.to_tl()],
+        ),
+        target_user_ids
+    )
 
 
 async def update_chat_participants(chat: Chat, peers: list[Peer]) -> Updates:
@@ -906,13 +912,14 @@ async def update_chat_participants(chat: Chat, peers: list[Peer]) -> Updates:
     )
 
     await Update.bulk_create(updates_to_create)
-    await SessionManager.send(updates, user_id=user_ids)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id=user_ids)
     return updates
 
 
 async def update_status(
         user: User, status: Presence, peers: list[Peer | User | int] | list[Peer] | list[User] | list[int],
 ) -> None:
+    worker = request_ctx.get().worker
     user_tl = await user.to_tl()
 
     for peer in peers:
@@ -933,7 +940,7 @@ async def update_status(
             users=[user_tl],
         )
 
-        await SessionManager.send(updates, peer_user_id)
+        await worker.send_message_to_client(updates, peer_user_id)
 
 
 async def update_user_name(user: User) -> None:
@@ -959,17 +966,20 @@ async def update_user_name(user: User) -> None:
     target_user_ids.append(user.id)
 
     username = user.username.username if user.username is not None else None
-    await SessionManager.send(UpdatesWithDefaults(
-        updates=[
-            UpdateUserName(
-                user_id=user.id,
-                first_name=user.first_name,
-                last_name=user.last_name or "",
-                usernames=[] if not username else [TLUsername(editable=True, active=True, username=username)],
-            )
-        ],
-        users=[await user.to_tl()],
-    ), target_user_ids)
+    await request_ctx.get().worker.send_message_to_client(
+        UpdatesWithDefaults(
+            updates=[
+                UpdateUserName(
+                    user_id=user.id,
+                    first_name=user.first_name,
+                    last_name=user.last_name or "",
+                    usernames=[] if not username else [TLUsername(editable=True, active=True, username=username)],
+                )
+            ],
+            users=[await user.to_tl()],
+        ),
+        target_user_ids
+    )
 
 
 async def add_remove_contact(user_id: int, targets: list[User]) -> Updates:
@@ -1004,7 +1014,7 @@ async def add_remove_contact(user_id: int, targets: list[User]) -> Updates:
     )
 
     await Update.bulk_create(updates_to_create)
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -1019,15 +1029,18 @@ async def block_unblock_user(user_id: int, target: Peer) -> None:
         peer=target,
     )
 
-    await SessionManager.send(UpdatesWithDefaults(
-        updates=[
-            UpdatePeerBlocked(
-                peer_id=target.to_tl(),
-                blocked=target.blocked_at is not None,
-            ),
-        ],
-        users=[await target.user.to_tl()],
-    ), user_id)
+    await request_ctx.get().worker.send_message_to_client(
+        UpdatesWithDefaults(
+            updates=[
+                UpdatePeerBlocked(
+                    peer_id=target.to_tl(),
+                    blocked=target.blocked_at is not None,
+                ),
+            ],
+            users=[await target.user.to_tl()],
+        ),
+        user_id
+    )
 
 
 async def update_chat(chat: Chat) -> Updates:
@@ -1052,7 +1065,7 @@ async def update_chat(chat: Chat) -> Updates:
     )
 
     await Update.bulk_create(updates_to_create)
-    await SessionManager.send(updates, user_id=participant_ids)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id=participant_ids)
 
     return updates
 
@@ -1071,16 +1084,19 @@ async def update_dialog_unread_mark(user_id: int, dialog: Dialog) -> None:
     ucc.add_peer(dialog.peer)
     users, chats, channels = await ucc.resolve()
 
-    await SessionManager.send(UpdatesWithDefaults(
-        updates=[
-            UpdateDialogUnreadMark(
-                peer=DialogPeer(peer=dialog.peer.to_tl()),
-                unread=dialog.unread_mark,
-            ),
-        ],
-        users=users,
-        chats=[*chats, *channels],
-    ), user_id)
+    await request_ctx.get().worker.send_message_to_client(
+        UpdatesWithDefaults(
+            updates=[
+                UpdateDialogUnreadMark(
+                    peer=DialogPeer(peer=dialog.peer.to_tl()),
+                    unread=dialog.unread_mark,
+                ),
+            ],
+            users=users,
+            chats=[*chats, *channels],
+        ),
+        user_id
+    )
 
 
 async def update_read_history_inbox(peer: Peer, max_id: int, unread_count: int) -> tuple[int, Updates]:
@@ -1114,7 +1130,7 @@ async def update_read_history_inbox(peer: Peer, max_id: int, unread_count: int) 
         chats=chats_and_channels,
     )
 
-    await SessionManager.send(updates, peer.owner_id)
+    await request_ctx.get().worker.send_message_to_client(updates, peer.owner_id)
 
     return pts, updates
 
@@ -1152,12 +1168,13 @@ async def update_read_history_inbox_channel(
         chats=chats_and_channels,
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
 
 async def update_read_history_outbox_channel(channel: Channel, max_ids: dict[int, int]) -> None:
+    worker = request_ctx.get().worker
     updates_to_create = []
 
     channels = [await channel.to_tl()]
@@ -1187,13 +1204,14 @@ async def update_read_history_outbox_channel(channel: Channel, max_ids: dict[int
             chats=channels,
         )
 
-        await SessionManager.send(updates, user_id)
+        await worker.send_message_to_client(updates, user_id)
 
     if updates_to_create:
         await Update.bulk_create(updates_to_create)
 
 
 async def update_read_history_outbox(messages: dict[Peer, int]) -> None:
+    worker = request_ctx.get().worker
     updates_to_create = []
 
     ucc = UsersChatsChannels()
@@ -1222,7 +1240,7 @@ async def update_read_history_outbox(messages: dict[Peer, int]) -> None:
             peer=peer,
         ))
 
-        await SessionManager.send(UpdatesWithDefaults(
+        await worker.send_message_to_client(UpdatesWithDefaults(
             updates=[
                 UpdateReadHistoryOutbox(
                     peer=peer.to_tl(),
@@ -1252,7 +1270,7 @@ async def update_channel(channel: Channel, send_to_users: list[int] | None = Non
         chats=[await channel.to_tl()],
     )
 
-    await SessionManager.send(
+    await request_ctx.get().worker.send_message_to_client(
         update,
         channel_id=channel.id if send_to_users is None else None,
         user_id=send_to_users,
@@ -1295,7 +1313,7 @@ async def update_folder_peers(user_id: int, dialogs: list[Dialog]) -> Updates:
         chats=[*chats, *channels],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -1329,7 +1347,7 @@ async def update_chat_default_banned_rights(chat: Chat) -> Updates:
     )
 
     await Update.bulk_create(updates_to_create)
-    await SessionManager.send(updates, user_id=user_ids)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id=user_ids)
 
     return updates
 
@@ -1347,7 +1365,7 @@ async def update_channel_for_user(channel: Channel, user: User | int) -> Updates
         chats=[await channel.to_tl()],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
     return updates
 
 
@@ -1370,7 +1388,7 @@ async def update_message_poll(poll: Poll, user_id: int) -> Updates:
         ],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
     return updates
 
 
@@ -1397,7 +1415,7 @@ async def update_folder(user_id: int, folder_id: int, folder: DialogFolder | Non
         ],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -1418,7 +1436,7 @@ async def update_folders_order(user_id: int, folder_ids: list[int]) -> Updates:
         updates=[UpdateDialogFilterOrder(order=folder_ids)],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -1447,7 +1465,7 @@ async def update_reactions(user_id: int, messages: list[MessageRef], peer: Peer,
     )
 
     if send:
-        await SessionManager.send(updates, user_id)
+        await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -1468,7 +1486,7 @@ async def encryption_update(user_id: int, chat: EncryptedChat) -> None:
 
     other_user = chat.from_user if user_id == chat.to_user_id else chat.to_user
 
-    await SessionManager.send(
+    await request_ctx.get().worker.send_message_to_client(
         UpdatesWithDefaults(
             updates=[
                 UpdateEncryption(
@@ -1487,14 +1505,14 @@ async def send_encrypted_update(update: SecretUpdate) -> None:
         f"Sending secret update of type {update.type!r} "
         f"to user {update.authorization.user_id} (auth {update.authorization.id})"
     )
-    await SessionManager.send(
+    await request_ctx.get().worker.send_message_to_client(
         UpdatesWithDefaults(updates=[update.to_tl()]),
         auth_id=update.authorization_id,
     )
 
 
 async def send_encrypted_typing(chat_id: int, auth_id: int) -> None:
-    await SessionManager.send(
+    await request_ctx.get().worker.send_message_to_client(
         UpdatesWithDefaults(updates=[UpdateEncryptedChatTyping(chat_id=chat_id)]),
         auth_id=auth_id,
     )
@@ -1515,7 +1533,7 @@ async def update_config(user_id: int) -> Updates:
         updates=[UpdateConfig()],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -1535,7 +1553,7 @@ async def update_recent_reactions(user_id: int) -> Updates:
         updates=[UpdateRecentReactions()],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -1564,7 +1582,7 @@ async def new_auth(user: User, auth: UserAuthorization) -> Updates:
         ],
     )
 
-    await SessionManager.send(
+    await request_ctx.get().worker.send_message_to_client(
         ObjectWithLayerRequirement(
             object=updates,
             fields=[
@@ -1572,7 +1590,6 @@ async def new_auth(user: User, auth: UserAuthorization) -> Updates:
             ],
         ),
         user.id,
-        min_layer=163,
     )
 
     return updates
@@ -1597,7 +1614,7 @@ async def new_stickerset(user_id: int, stickerset: Stickerset) -> Updates:
         ],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -1615,7 +1632,7 @@ async def update_stickersets(user_id: int) -> Updates:
 
     updates = UpdatesWithDefaults(updates=[UpdateStickerSets()])
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -1640,7 +1657,7 @@ async def update_stickersets_order(user_id: int, new_order: list[int]) -> Update
         ],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -1668,7 +1685,7 @@ async def update_chat_wallpaper(user: User, target: User, chat_wallpaper: ChatWa
         users=[await target.to_tl()]
     )
 
-    await SessionManager.send(updates, user.id)
+    await request_ctx.get().worker.send_message_to_client(updates, user.id)
 
     return updates
 
@@ -1697,7 +1714,7 @@ async def read_messages_contents(user_id: int, message_ids: list[int]) -> tuple[
         ],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return new_pts, updates
 
@@ -1715,7 +1732,7 @@ async def read_channel_messages_contents(user_id: int, channel: Channel, message
     #      related_ids=message_ids,
     #  )
 
-    await SessionManager.send(
+    await request_ctx.get().worker.send_message_to_client(
         UpdatesWithDefaults(
             updates=[
                 UpdateChannelReadMessagesContents(
@@ -1743,7 +1760,7 @@ async def new_scheduled_message(user_id: int, message: MessageRef) -> Updates:
 
     updates = UpdatesWithDefaults(updates=[UpdateNewScheduledMessage(message=await message.to_tl(user_id))])
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -1774,7 +1791,7 @@ async def delete_scheduled_messages(
         ],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -1817,7 +1834,7 @@ async def update_history_ttl(peer: Peer, ttl_days: int) -> Updates:
     await Update.bulk_create(updates_to_create)
 
     for upd, uid in updates_to_send:
-        await SessionManager.send(upd, uid)
+        await request_ctx.get().worker.send_message_to_client(upd, uid)
 
     return result
 
@@ -1846,7 +1863,7 @@ async def migrate_chat(chat: Chat, channel: Channel, user_ids: list[int]) -> Upd
     )
 
     await Update.bulk_create(updates_to_create)
-    await SessionManager.send(updates, user_id=user_ids)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id=user_ids)
 
     return updates
 
@@ -1885,7 +1902,7 @@ async def bot_callback_query(bot_id: int, query: CallbackQuery) -> None:
         chats=[*chats, *channels],
     )
 
-    await SessionManager.send(updates, bot_id)
+    await request_ctx.get().worker.send_message_to_client(updates, bot_id)
 
 
 async def update_user_phone(user: User) -> Updates:
@@ -1908,7 +1925,7 @@ async def update_user_phone(user: User) -> Updates:
         ],
     )
 
-    await SessionManager.send(updates, user.id)
+    await request_ctx.get().worker.send_message_to_client(updates, user.id)
 
     return updates
 
@@ -1934,7 +1951,7 @@ async def update_peer_notify_settings(
         ],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -1950,7 +1967,7 @@ async def update_saved_gifs(user_id: int) -> Updates:
 
     updates = UpdatesWithDefaults(updates=[UpdateSavedGifs()])
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -1980,7 +1997,7 @@ async def bot_inline_query(bot: User, query: InlineQuery) -> None:
         users=[await query.user.to_tl()],
     )
 
-    await SessionManager.send(updates, bot.id)
+    await request_ctx.get().worker.send_message_to_client(updates, bot.id)
 
 
 async def update_recent_stickers(user_id: int) -> Updates:
@@ -1996,7 +2013,7 @@ async def update_recent_stickers(user_id: int) -> Updates:
 
     updates = UpdatesWithDefaults(updates=[UpdateRecentStickers()])
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -2014,7 +2031,7 @@ async def update_faved_stickers(user_id: int) -> Updates:
 
     updates = UpdatesWithDefaults(updates=[UpdateFavedStickers()])
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
     return updates
 
@@ -2044,7 +2061,7 @@ async def pin_saved_dialog(user_id: int, dialog: SavedDialog) -> None:
         chats=[*chats, *channels],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
 
 async def reorder_pinned_saved_dialogs(user_id: int, dialogs: list[SavedDialog]) -> None:
@@ -2071,7 +2088,7 @@ async def reorder_pinned_saved_dialogs(user_id: int, dialogs: list[SavedDialog])
         chats=[],
     )
 
-    await SessionManager.send(updates, user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id)
 
 
 async def update_privacy(user: User, rule: PrivacyRule, rules: PrivacyRules) -> Updates:
@@ -2096,7 +2113,7 @@ async def update_privacy(user: User, rule: PrivacyRule, rules: PrivacyRules) -> 
         chats=rules.chats,
     )
 
-    await SessionManager.send(updates, user.id)
+    await request_ctx.get().worker.send_message_to_client(updates, user.id)
 
     return updates
 
@@ -2118,7 +2135,7 @@ async def update_channel_available_messages(channel: Channel, min_id: int) -> Up
         chats=[await channel.to_tl()],
     )
 
-    await SessionManager.send(updates, channel_id=channel.id)
+    await request_ctx.get().worker.send_message_to_client(updates, channel_id=channel.id)
 
     return updates
 
@@ -2141,7 +2158,7 @@ async def update_channel_participant_available_message(user_id: int, channel: Ch
         chats=[await channel.to_tl()],
     )
 
-    await SessionManager.send(updates, user_id=user_id)
+    await request_ctx.get().worker.send_message_to_client(updates, user_id=user_id)
 
     return updates
 
@@ -2168,7 +2185,7 @@ async def phone_call_update(user_id: int, call: PhoneCall, sessions: list[int] |
         ],
     )
 
-    await SessionManager.send(
+    await request_ctx.get().worker.send_message_to_client(
         updates,
         user_id=user_id if sessions is not None else None,
         auth_id=sessions,
@@ -2178,7 +2195,7 @@ async def phone_call_update(user_id: int, call: PhoneCall, sessions: list[int] |
 
 
 async def phone_signaling_update(session_id: int, call_id: int, data: bytes) -> None:
-    await SessionManager.send(
+    await request_ctx.get().worker.send_message_to_client(
         UpdatesWithDefaults(
             updates=[
                 UpdatePhoneCallSignalingData(
@@ -2209,6 +2226,6 @@ async def update_user_emoji_status(user: User, status: UserEmojiStatus | None) -
         users=[await user.to_tl()],
     )
 
-    await SessionManager.send(updates, user.id)
+    await request_ctx.get().worker.send_message_to_client(updates, user.id)
 
     return updates

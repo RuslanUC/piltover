@@ -1,35 +1,24 @@
 from __future__ import annotations
 
 import asyncio
-import base64
-import os
 from pathlib import Path
 
 from loguru import logger
-from taskiq import TaskiqEvents, AsyncBroker, TaskiqState
+from nats import NATS
 
 from piltover.gateway.client import Client
-from piltover.message_brokers.base_broker import BaseMessageBroker
-from piltover.session import SessionManager
-from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, Keys
+from piltover.utils import get_public_key_fingerprint, load_private_key, load_public_key, Keys
 
 
 class Gateway:
     HOST = "0.0.0.0"
     PORT = 4430
 
-    def __init__(
-            self, data_dir: Path, broker: AsyncBroker, message_broker: BaseMessageBroker,
-            host: str = HOST, port: int = PORT, server_keys: Keys | None = None, salt_key: bytes | None = None,
-    ):
+    def __init__(self, data_dir: Path, server_keys: Keys, salt_key: bytes, nats: NATS) -> None:
         self.data_dir = data_dir
 
-        self.host = host
-        self.port = port
-
         self.server_keys = server_keys
-        if self.server_keys is None:
-            self.server_keys = gen_keys()
+        self.salt_key = salt_key
 
         self.public_key = load_public_key(self.server_keys.public_key)
         self.private_key = load_private_key(self.server_keys.private_key)
@@ -37,27 +26,9 @@ class Gateway:
         self.fingerprint: int = get_public_key_fingerprint(self.server_keys.public_key)
         self.fingerprint_signed: int = get_public_key_fingerprint(self.server_keys.public_key, True)
 
-        if salt_key is None:
-            self.salt_key = salt_key = os.urandom(32)
-            logger.info(f"Salt key is None, generating new one: {base64.b64encode(salt_key).decode('latin1')}")
-        else:
-            self.salt_key = salt_key
-
-        self.broker = broker
-        self.message_broker = message_broker
-
-        self.broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, self._broker_startup)
-
-    async def _broker_startup(self, _: TaskiqState) -> None:
-        SessionManager.set_broker(self.message_broker)
+        self.nats = nats
 
     @logger.catch
     async def accept_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        client = Client(server=self, reader=reader, writer=writer)
+        client = Client(self, reader, writer)
         await client.worker()
-
-    async def serve(self):
-        await self.broker.startup()
-        server = await asyncio.start_server(self.accept_client, self.host, self.port)
-        async with server:
-            await server.serve_forever()

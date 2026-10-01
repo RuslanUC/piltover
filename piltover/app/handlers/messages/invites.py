@@ -11,22 +11,22 @@ from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesWithDefaults
 from piltover.app.utils.utils import get_chat_or_channel_from_peer
 from piltover.config import APP_CONFIG
+from piltover.context import request_ctx
 from piltover.db.enums import PeerType, MessageType, ChatBannedRights, ChatAdminRights, AdminLogEntryAction
 from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInviteRequest, Chat, ChatBase, Channel, \
     Dialog, AdminLogEntry, MessageRef
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
-from piltover.session import SessionManager
 from piltover.tl import Updates, ChatInviteAlready, ChatInvite as TLChatInvite, \
     ChatInviteExported, ChatInviteImporter, InputPeerUser, InputPeerUserFromMessage, MessageActionChatJoinedByLink, \
     MessageActionChatJoinedByRequest, MessageActionChatAddUser, ChatAdminWithInvites, UpdatePendingJoinRequests
+from piltover.tl.base import ChatInviteImporter as TLChatInviteImporterBase, \
+    ExportedChatInvite as TLExportedChatInviteBase
 from piltover.tl.functions.messages import GetExportedChatInvites, GetAdminsWithInvites, GetChatInviteImporters, \
     ImportChatInvite, CheckChatInvite, ExportChatInvite, GetExportedChatInvite, DeleteRevokedExportedChatInvites, \
     HideChatJoinRequest, HideAllChatJoinRequests, ExportChatInvite_133, ExportChatInvite_134, EditExportedChatInvite
 from piltover.tl.types.messages import ExportedChatInvites, ChatAdminsWithInvites, ChatInviteImporters, \
     ExportedChatInvite
-from piltover.tl.base import ChatInviteImporter as TLChatInviteImporterBase, \
-    ExportedChatInvite as TLExportedChatInviteBase
 from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
@@ -312,7 +312,7 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
             )
 
     if isinstance(chat_or_channel, Channel):
-        await SessionManager.subscribe_to_channel(chat_or_channel.id, [user.id])
+        await request_ctx.get().worker.subscribe_to_channel(chat_or_channel.id, [user.id])
 
         # TODO: send SERVICE_CHAT_USER_INVITE_JOIN or SERVICE_CHAT_USER_ADD message if channel is a supergroup
         return await upd.update_channel_for_user(chat_or_channel, user.id)
@@ -490,7 +490,7 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
         await upd.update_chat_participants(chat, chat_peers)
     elif isinstance(chat, Channel):
         # TODO: send SERVICE_CHAT_USER_INVITE_JOIN and SERVICE_CHAT_USER_REQUEST_JOIN
-        await SessionManager.subscribe_to_channel(chat.id, requested_users)
+        await request_ctx.get().worker.subscribe_to_channel(chat.id, requested_users)
         return await upd.update_channel_for_user(chat, user.id)
     else:
         raise Unreachable(f"Got invalid chat: {chat}")
