@@ -2,6 +2,17 @@
 
 An experimental Telegram server written from scratch in Python. Fork of a [DavideGalilei/piltover](https://github.com/DavideGalilei/piltover).
 
+### TODO for this branch
+
+- [ ] Implement scheduler
+- [ ] Gateway can't decode worker's BoolTrue/BoolFalse/Vector responses
+- [ ] Use nats for pubsub which was removed
+- [ ] Use jetstream for gateway -> client message queue
+- [ ] Use jetstream for storing session data
+- [ ] Make tests work
+- [ ] Add in-process message queue for pure-python single-process runs without nats
+- [ ] Maybe something else I forgot?
+
 ## TODO
 
 - [ ] MTProxy support maybe? Obfuscation is already implemented, so why not?
