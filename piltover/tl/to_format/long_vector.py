@@ -6,4 +6,4 @@ class LongVectorToFormat(types.internal.LongVectorToFormatInternal):
     def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
         if ctx.dont_format:
             return super().write(ctx)
-        return LongVector.write(self.vec)
+        return LongVector.write(self.vec, ctx)

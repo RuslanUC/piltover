@@ -6,7 +6,7 @@ import logging
 from asyncio import Task, CancelledError
 from contextlib import AsyncExitStack
 from os import urandom
-from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Protocol, overload, Literal, NoReturn, Any, Generator
+from typing import AsyncIterator, TypeVar, TYPE_CHECKING, Protocol, overload, Literal, NoReturn, Any, Generator
 
 import pytest
 import pytest_asyncio
@@ -15,8 +15,6 @@ from loguru import logger
 from pyrogram.session import Auth
 from pyrogram.types import Chat
 from pyrogram.utils import get_channel_id
-from taskiq import TaskiqScheduler
-from taskiq.cli.scheduler.run import logger as taskiq_sched_logger
 from tortoise import connections
 from tortoise.backends.sqlite import SqliteClient
 
@@ -33,8 +31,6 @@ def redirect_logging_to_loguru() -> None:
 
     InterceptHandler.redirect_to_loguru("pyrogram")
     InterceptHandler.redirect_to_loguru("aiocache.base", logging.DEBUG)
-    InterceptHandler.redirect_to_loguru("taskiq", logging.WARNING)
-    InterceptHandler.redirect_to_loguru(taskiq_sched_logger.name, logging.DEBUG)
     InterceptHandler.redirect_to_loguru("asyncio", logging.WARNING)
     InterceptHandler.redirect_to_loguru("tg_secret.client", logging.DEBUG)
     # InterceptHandler.redirect_to_loguru("tortoise", logging.DEBUG)
@@ -108,10 +104,6 @@ async def _custom_auth_create(self: Auth) -> bytes:
     return key
 
 
-async def _empty_async_func(*args, **kwargs) -> None:
-    ...
-
-
 @pytest_asyncio.fixture(autouse=True)
 async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config) -> AsyncIterator[Gateway]:
     from piltover.app.app import app
@@ -135,12 +127,6 @@ async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config
     APP_CONFIG.scheduled_instant_send_threshold = -30
 
     async with AsyncExitStack() as stack:
-        if run_scheduler:
-            scheduler = cast(TaskiqScheduler, app._scheduler)
-
-            scheduler.startup = _empty_async_func
-            scheduler.shutdown = _empty_async_func
-
         server_info: tuple[Gateway, str, int] = await stack.enter_async_context(app.run_test(
             create_countries=create_countries, create_reactions=create_reactions, create_chat_themes=create_chat_themes,
             create_peer_colors=create_peer_colors, create_languages=create_languages,

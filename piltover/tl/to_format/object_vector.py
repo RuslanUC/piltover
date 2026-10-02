@@ -6,4 +6,4 @@ class ObjectVectorToFormat(types.internal.ObjectVectorToFormatInternal):
     def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
         if ctx.dont_format:
             return super().write(ctx)
-        return TLObjectVector.write(self.vec)
+        return TLObjectVector.write(self.vec, ctx)
