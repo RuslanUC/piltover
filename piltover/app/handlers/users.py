@@ -11,6 +11,7 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerSettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
+from piltover.tl.to_format.object_vector import ObjectVectorToFormat
 from piltover.tl.types import UserFull as FullUser, InputUser, BotInfo as TLBotInfo, InputUserSelf, \
     InputUserFromMessage, InputPeerUser, InputPeerSelf, InputPeerUserFromMessage
 from piltover.tl.types.users import UserFull
@@ -207,6 +208,6 @@ async def get_users(request: GetUsers, user_id: int):
     )
 
     if users:
-        return TLObjectVector(await User.to_tl_bulk(users))
+        return ObjectVectorToFormat(vec=await User.to_tl_bulk(users))
     else:
-        return TLObjectVector()
+        return ObjectVectorToFormat(vec=[])

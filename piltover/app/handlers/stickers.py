@@ -28,6 +28,7 @@ from piltover.tl.functions.messages import GetMyStickers, GetStickerSet, GetAllS
     ClearRecentStickers, SaveRecentSticker, FaveSticker, GetFavedStickers, GetCustomEmojiDocuments, GetEmojiStickers
 from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
     DeleteStickerSet, ChangeSticker, AddStickerToSet, ReplaceSticker, RemoveStickerFromSet, SetStickerSetThumb
+from piltover.tl.to_format.object_vector import ObjectVectorToFormat
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers, StickerSetNotModified, \
     AllStickers, AllStickersNotModified, StickerSetInstallResultSuccess, StickerSetInstallResultArchive, \
     ArchivedStickers, RecentStickers, RecentStickersNotModified, FavedStickers, FavedStickersNotModified
@@ -1000,10 +1001,10 @@ async def get_faved_stickers(request: GetFavedStickers, user_id: int) -> FavedSt
 @handler.on_request(GetCustomEmojiDocuments, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_custom_emoji_documents(request: GetCustomEmojiDocuments) -> list[Document]:
     files = await File.filter(id__in=request.document_id[:250], type=FileType.DOCUMENT_EMOJI)
-    return TLObjectVector(
+    return ObjectVectorToFormat(vec=[
         file.to_tl_document()
         for file in files
-    )
+    ])
 
 
 @handler.on_request(GetEmojiStickers, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)

@@ -13,6 +13,8 @@ REPLACE_CONSTRUCTORS = {
     0x5157a73d: "to_format.UpdateMessageIDToFormat",
     0x237ed5c2: "to_format.ChannelMessageToFormat",
     0x7108bc92: "to_format.StickerSetToFormat",
+    0x770a06c1: "to_format.ObjectVectorToFormat",
+    0x49e6942e: "to_format.LongVectorToFormat",
 }
 
 BASE_CLASSES_NEED_CONTEXT = {"Chat", "User", "Message", "PollResults"}

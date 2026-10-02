@@ -12,3 +12,5 @@ from .message import MessageToFormat
 from .update_message_id import UpdateMessageIDToFormat
 from .channel_message import ChannelMessageToFormat
 from .stickerset import StickerSetToFormat
+from .object_vector import ObjectVectorToFormat
+from .long_vector import LongVectorToFormat

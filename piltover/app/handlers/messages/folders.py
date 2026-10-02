@@ -7,6 +7,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.tl import DialogFilterDefault, TextWithEntities, TLObjectVector
 from piltover.tl.functions.messages import GetDialogFilters, UpdateDialogFilter, UpdateDialogFiltersOrder, \
     GetDialogFilters_133
+from piltover.tl.to_format.object_vector import ObjectVectorToFormat
 from piltover.tl.types.messages import DialogFilters
 from piltover.tl.base import DialogFilter as TLDialogFilterBase
 from piltover.worker import MessageHandler
@@ -16,7 +17,7 @@ handler = MessageHandler("messages.folders")
 
 @handler.on_request(GetDialogFilters, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_dialog_filters(user_id: int) -> DialogFilters:
-    folders = cast(TLObjectVector[TLDialogFilterBase], TLObjectVector())
+    folders = []
     dialog_folders = await DialogFolder.filter(
         owner_id=user_id, id_for_user__gt=0,
     ).prefetch_related("pinned_peers", "include_peers", "exclude_peers").order_by("position", "id")

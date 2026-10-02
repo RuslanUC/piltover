@@ -6,6 +6,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.tl import LangPackString, LangPackDifference, TLObjectVector
 from piltover.tl.functions.langpack import GetLanguages, GetStrings, GetLangPack, GetLanguages_72, GetLanguage, \
     GetDifference, GetDifference_72, GetLangPack_72, GetStrings_72
+from piltover.tl.to_format.object_vector import ObjectVectorToFormat
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("langpack")
@@ -18,10 +19,10 @@ async def get_languages(request: GetLanguages | GetLanguages_72):
     pack = request.lang_pack if isinstance(request, GetLanguages) else "android"
 
     languages = await Language.filter(platform=pack)
-    return TLObjectVector(
+    return ObjectVectorToFormat(vec=[
         language.to_tl()
         for language in languages
-    )
+    ])
 
 
 @handler.on_request(GetLanguage, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -107,7 +108,7 @@ async def get_strings(request: GetStrings | GetStrings_72) -> list[LangPackStrin
     if (cached := await Cache.obj.get(cache_key)) is not None:
         return cached
 
-    result = TLObjectVector([
+    result = ObjectVectorToFormat(vec=[
         string.to_tl()
         for string in await LanguageString.filter(language=language, key__in=request.keys, deleted=False)
     ])

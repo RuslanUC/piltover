@@ -134,7 +134,6 @@ class TLObjectVector(Vector["TObj"]):
     # noinspection PyMethodParameters
     @classinstancemethod
     def write(cls: type[TLObjectVector], self: list[TLObject], ctx: SerializationContext) -> bytes:
-        result = cls.header(len(self))
-        for element in self:
-            result += element.write(ctx)
-        return result
+        result = [cls.header(len(self))]
+        result += [element.write(ctx) for element in self]
+        return b"".join(result)

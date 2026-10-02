@@ -21,7 +21,7 @@ from piltover.tl.core_types import RpcResult
 from piltover.tl.functions.internal import CallRpc, CallRpcInternal
 from piltover.tl.layer_info import layer
 from piltover.tl.types.internal import RpcResponse, ObjectWithLayerRequirement, MessageToClient, SetInternalPush, \
-    NotifyInternalPush, ChannelSubscribe, ChannelUnsubscribe, SendUpdatesTooLong
+    NotifyInternalPush, ChannelSubscribe, ChannelUnsubscribe
 from piltover.utils import get_public_key_fingerprint
 from piltover.utils.debug import measure_time
 
@@ -368,8 +368,3 @@ class Worker(MessageHandler):
         to_send = ChannelUnsubscribe(channel_id=channel_id).write()
         for user_id in user_ids:
             await self.nats.publish(f"piltover.client.user.{user_id}", to_send)
-
-    async def send_updates_too_long(self, key_ids: list[int]) -> None:
-        to_send = SendUpdatesTooLong().write()
-        for key_id in key_ids:
-            await self.nats.publish(f"piltover.client.key.{key_id}", to_send)

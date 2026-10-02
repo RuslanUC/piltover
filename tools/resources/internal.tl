@@ -47,6 +47,9 @@ internal.tagged_bytes_vector#8d538c0f vec:Vector<bytes> = internal.TaggedVector;
 internal.tagged_string_vector#492bec2d vec:Vector<string> = internal.TaggedVector;
 internal.tagged_object_vector#b002bb63 vec:Vector<Object> = internal.TaggedVector;
 
+internal.object_vector_to_format_internal#770a06c1 vec:Vector<Object> = internal.TaggedVectorToFormat;
+internal.long_vector_to_format_internal#49e6942e vec:Vector<long> = internal.TaggedVectorToFormat;
+
 // Tagged types
 
 internal.tagged_int#202f2b94 value:int = internal.TaggedValue;

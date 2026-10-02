@@ -36,6 +36,7 @@ from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCou
     GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133, GetSearchResultsCalendar_134, \
     ReadMessageContents, SetHistoryTTL, GetSearchResultsPositions, GetSearchResultsPositions_134, GetDiscussionMessage, \
     GetReplies, GetMessageReadParticipants, ReadDiscussion
+from piltover.tl.to_format.object_vector import ObjectVectorToFormat
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice, \
     MessageViews as MessagesMessageViews, SearchResultsCalendar, AffectedHistory, SearchResultsPositions, \
     DiscussionMessage
@@ -613,14 +614,14 @@ async def get_search_counters(request: GetSearchCounters, user_id: int) -> list[
 
     base_query = append_channel_min_message_id_to_query_maybe(peer, base_query)
 
-    counters = cast(TLObjectVector[SearchCounter], TLObjectVector())
+    counters = ObjectVectorToFormat(vec=[])
 
     for filt in request.filters:
         if (filter_query := message_filter_to_query(filt, peer, user_id)) is not None:
             count = await MessageRef.filter(base_query & filter_query).count()
         else:
             count = 0
-        counters.append(SearchCounter(filter=filt, count=count))
+        counters.vec.append(SearchCounter(filter=filt, count=count))
 
     return counters
 
@@ -1228,9 +1229,9 @@ async def get_message_read_participants(request: GetMessageReadParticipants, use
         ).group_by("user_id").annotate(read_at=Min("read_at")).limit(50).values_list("user_id", "read_at")
     )
 
-    result = cast(TLObjectVector[ReadParticipantDate], TLObjectVector())
+    result = ObjectVectorToFormat(vec=[])
     for read_user_id, read_at in read_dates:
-        result.append(ReadParticipantDate(
+        result.vec.append(ReadParticipantDate(
             user_id=read_user_id,
             date=int(read_at.timestamp()),
         ))

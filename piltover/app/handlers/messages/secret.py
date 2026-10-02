@@ -17,6 +17,7 @@ from piltover.tl import InputUser, InputUserFromMessage, EncryptedChatDiscarded,
     Long, InputEncryptedChat, LongVector
 from piltover.tl.functions.messages import RequestEncryption, AcceptEncryption, DiscardEncryption, SendEncrypted, \
     SendEncryptedService, SendEncryptedFile, ReceivedQueue, SetEncryptedTyping, ReadEncryptedHistory
+from piltover.tl.to_format.long_vector import LongVectorToFormat
 from piltover.tl.types.messages import SentEncryptedMessage, SentEncryptedFile
 from piltover.tl.base import EncryptedFile as TLEncryptedFileBase, InputEncryptedFile as TLInputEncryptedFileBase
 from piltover.utils import gen_safe_prime
@@ -249,7 +250,7 @@ async def received_queue(request: ReceivedQueue):
     logger.trace(f"Random ids btw: {random_ids!r}")
     await SecretUpdate.filter(authorization=current_auth, qts__lte=request.max_qts).delete()
 
-    return LongVector(random_ids)
+    return LongVectorToFormat(vec=random_ids)
 
 
 @handler.on_request(SetEncryptedTyping, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)

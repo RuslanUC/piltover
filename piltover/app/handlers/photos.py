@@ -13,6 +13,7 @@ from piltover.tl import InputPhoto, InputPhotoEmpty, PhotoEmpty, LongVector, Inp
 from piltover.tl.base import InputUser as TLInputUserBase, Photo as TLPhotoBase
 from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos, UpdateProfilePhoto, \
     UploadContactProfilePhoto
+from piltover.tl.to_format.long_vector import LongVectorToFormat
 from piltover.tl.types.photos import Photos, Photo as PhotosPhoto, PhotosSlice
 from piltover.worker import MessageHandler
 
@@ -118,7 +119,7 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
 
 @handler.on_request(DeletePhotos, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_photos(request: DeletePhotos, user: User) -> list[int]:
-    deleted = LongVector()
+    deleted = LongVectorToFormat(vec=[])
 
     ids = [photo.id for photo in request.id if isinstance(photo, InputPhoto)]
     if not ids:
@@ -144,7 +145,7 @@ async def delete_photos(request: DeletePhotos, user: User) -> list[int]:
             user.version += 1
             await user.save(update_fields=["version"])
 
-    deleted.extend(actual_ids)
+    deleted.vec.extend(actual_ids)
     await upd.update_user(user)
 
     return deleted

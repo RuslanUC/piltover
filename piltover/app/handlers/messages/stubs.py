@@ -1,6 +1,5 @@
 from piltover.enums import ReqHandlerFlags
-from piltover.tl import WebPageEmpty, AttachMenuBots, EmojiKeywordsDifference, PeerSettings, TLObjectVector, \
-    MessageMediaEmpty
+from piltover.tl import WebPageEmpty, AttachMenuBots, EmojiKeywordsDifference, PeerSettings, MessageMediaEmpty
 from piltover.tl.base.channels import SponsoredMessageReportResult
 from piltover.tl.functions.channels import GetSponsoredMessages_133
 from piltover.tl.functions.messages import GetPeerSettings, GetQuickReplies, GetMessageEditData, \
@@ -8,6 +7,7 @@ from piltover.tl.functions.messages import GetPeerSettings, GetQuickReplies, Get
     GetSavedReactionTags, GetFeaturedStickers, GetFeaturedEmojiStickers, GetEmojiKeywords, GetWebPagePreview, \
     GetDefaultTagReactions, GetEmojiKeywordsDifference, GetAvailableEffects, GetSponsoredMessages, \
     ReportSponsoredMessage, ViewSponsoredMessage, ClickSponsoredMessage
+from piltover.tl.to_format.object_vector import ObjectVectorToFormat
 from piltover.tl.types.channels import SponsoredMessageReportResultReported
 from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Reactions, SavedReactionTags, Stickers, \
     FeaturedStickers, MessageEditData, QuickReplies, AvailableEffects, SponsoredMessages, SponsoredMessagesEmpty, \
@@ -28,7 +28,7 @@ async def get_peer_settings():  # pragma: no cover
 
 @handler.on_request(GetEmojiKeywordsLanguages, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_emoji_keywords_languages():  # pragma: no cover
-    return TLObjectVector()
+    return ObjectVectorToFormat(vec=[])
 
 
 @handler.on_request(GetWebPage, ReqHandlerFlags.AUTH_NOT_REQUIRED)
@@ -57,7 +57,7 @@ async def get_stickers():  # pragma: no cover
 
 @handler.on_request(GetSuggestedDialogFilters, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_suggested_dialog_filters():  # pragma: no cover
-    return TLObjectVector()
+    return ObjectVectorToFormat(vec=[])
 
 
 @handler.on_request(GetFeaturedStickers, ReqHandlerFlags.AUTH_NOT_REQUIRED)

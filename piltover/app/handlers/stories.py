@@ -4,6 +4,7 @@ from piltover.enums import ReqHandlerFlags
 from piltover.tl import StoriesStealthMode, Updates, IntVector
 from piltover.tl.functions.stories import GetAllStories, GetAllReadPeerStories, GetPeerMaxIDs, GetPinnedStories, \
     GetStoriesArchive
+from piltover.tl.to_format.long_vector import LongVectorToFormat
 from piltover.tl.types.stories import AllStories, Stories
 from piltover.worker import MessageHandler
 
@@ -40,7 +41,8 @@ async def get_all_read_peer_stories():  # pragma: no cover
 
 @handler.on_request(GetPeerMaxIDs, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_peer_max_ids() -> list[int]:  # pragma: no cover
-    return IntVector()
+    # NOTE: GetPeerMaxIDs returns vector of ints, not longs
+    return LongVectorToFormat(vec=[])
 
 
 @handler.on_request(GetPinnedStories, ReqHandlerFlags.AUTH_NOT_REQUIRED)

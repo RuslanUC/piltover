@@ -9,6 +9,7 @@ from piltover.tl.functions.payments import GetStarsStatus, GetStarsSubscriptions
     GetStarsTopupOptions
 from piltover.tl.functions.premium import GetBoostsStatus, GetMyBoosts, GetBoostsList
 from piltover.tl.functions.stats import GetBroadcastRevenueStats
+from piltover.tl.to_format.object_vector import ObjectVectorToFormat
 from piltover.tl.types.account import EmojiStatuses
 from piltover.tl.types.bots import PopularAppBots
 from piltover.tl.types.contacts import SponsoredPeers
@@ -89,7 +90,7 @@ async def get_starts_transactions() -> StarsStatus:  # pragma: no cover
 
 @handler.on_request(GetStarsTopupOptions, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_stars_topup_options() -> list[StarsTopupOption]:  # pragma: no cover
-    return TLObjectVector([
+    return ObjectVectorToFormat(vec=[
         StarsTopupOption(
             stars=1,
             currency="USD",

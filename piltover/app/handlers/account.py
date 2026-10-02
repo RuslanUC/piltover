@@ -42,6 +42,7 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     SaveWallPaper, InstallWallPaper, GetWallPapers, ResetWallPapers, UpdateColor, GetDefaultBackgroundEmojis, \
     UpdatePersonalChannel, UpdateNotifySettings, SetGlobalPrivacySettings, SendConfirmPhoneCode, ConfirmPhone, \
     UpdateEmojiStatus, GetNotifyExceptions, ResetNotifySettings
+from piltover.tl.to_format.object_vector import ObjectVectorToFormat
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait, ThemesNotModified, WallPapersNotModified, WallPapers
@@ -779,9 +780,9 @@ async def get_wallpaper(request: GetWallPaper) -> TLWallPaperBase:
 
 
 @handler.on_request(GetMultiWallPapers, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def get_multi_wallpapers(request: GetMultiWallPapers, user_id: int) -> TLObjectVector[TLWallPaperBase]:
+async def get_multi_wallpapers(request: GetMultiWallPapers, user_id: int) -> ObjectVectorToFormat:
     if not request.wallpapers:
-        return cast(TLObjectVector[TLWallPaperBase], TLObjectVector())
+        return ObjectVectorToFormat(vec=[])
 
     user = await User.get(id=user_id).only("id")
 
@@ -791,7 +792,7 @@ async def get_multi_wallpapers(request: GetMultiWallPapers, user_id: int) -> TLO
             raise ErrorRpc(error_code=400, error_message="WALLPAPER_INVALID")
         query &= q
 
-    return TLObjectVector([
+    return ObjectVectorToFormat(vec=[
         wallpaper.to_tl()
         for wallpaper in await Wallpaper.filter(query).select_related("document", "settings")
     ])

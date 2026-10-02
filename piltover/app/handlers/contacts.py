@@ -20,6 +20,8 @@ from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBloc
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_133, Unblock_133, \
     ResolveUsername_133, ImportContacts, ExportContactToken, ImportContactToken, GetContactIDs, ResetSaved
+from piltover.tl.to_format.long_vector import LongVectorToFormat
+from piltover.tl.to_format.object_vector import ObjectVectorToFormat
 from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays, \
     BlockedSlice, ImportedContacts
 from piltover.tl.base import User as TLUserBase, Peer as TLPeerBase
@@ -178,12 +180,12 @@ async def get_top_peers():  # pragma: no cover
 
 
 @handler.on_request(GetStatuses, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def get_statuses(user_id: int) -> list[ContactStatus]:
+async def get_statuses(user_id: int) -> ObjectVectorToFormat:
     statuses = await Presence.filter(user_id__in=Subquery(
         Contact.filter(owner_id=user_id).values_list("target_id", flat=True)
     ))
 
-    return TLObjectVector([
+    return ObjectVectorToFormat(vec=[
         ContactStatus(user_id=status.user_id, status=await status.to_tl(None))
         for status in statuses
     ])
@@ -449,7 +451,7 @@ async def get_contact_ids(user_id: int) -> list[int]:
         list[int],
         await Contact.filter(owner_id=user_id, target_id__not_isnull=True).values_list("target_id", flat=True)
     )
-    return LongVector(contact_ids)
+    return LongVectorToFormat(vec=contact_ids)
 
 
 @handler.on_request(ResetSaved, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
