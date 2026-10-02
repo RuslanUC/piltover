@@ -88,21 +88,23 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user_id: int) -
         return resp
     else:
         ctx = request_ctx.get()
-        pubsub = ctx.worker.pubsub
+        nats = ctx.worker.nats
 
         query = await CallbackQuery.create(user_id=user_id, message=message_for_bot, data=request.data)
 
-        topic = f"bot-callback-query/{query.id}"
-        await pubsub.listen(topic, None)
+        sub = await nats.subscribe(f"piltover.internal.bot-callback-query.{query.id}", max_msgs=1)
         await upd.bot_callback_query(cast(MessageRef, message_for_bot).content.author_id, query)
 
-        result = await pubsub.listen(topic, 15)
-        if result is None:
+        try:
+            result = await sub.next_msg(15)
+        except TimeoutError:
             await query.delete()
             raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
+        finally:
+            await sub.unsubscribe()
 
         try:
-            answer = BotCallbackAnswer.read(BytesIO(result))
+            answer = BotCallbackAnswer.read(BytesIO(result.data))
         except InvalidConstructorException as e:
             logger.opt(exception=e).warning("Failed to read bot callback answer")
             raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")  # noqa: B904
@@ -125,9 +127,9 @@ async def set_bot_callback_answer(request: SetBotCallbackAnswer, user_id: int) -
         if query is None:
             raise ErrorRpc(error_code=400, error_message="QUERY_ID_INVALID")
 
-        await ctx.worker.pubsub.notify(
-            topic=f"bot-callback-query/{query.id}",
-            data=BotCallbackAnswer(
+        await ctx.worker.nats.publish(
+            subject=f"piltover.internal.bot-callback-query.{query.id}",
+            payload=BotCallbackAnswer(
                 alert=request.alert,
                 has_url=request.url is not None,
                 native_ui=True,
@@ -217,21 +219,23 @@ async def get_inline_bot_results(request: GetInlineBotResults, user_id: int) -> 
         return await result.to_tl(items)
     else:
         ctx = request_ctx.get()
-        pubsub = ctx.worker.pubsub
+        nats = ctx.worker.nats
 
         await inline_query.save()
 
-        topic = f"bot-inline-query/{inline_query.id}"
-        await pubsub.listen(topic, None)
+        sub = await nats.subscribe(f"piltover.internal.bot-inline-query.{inline_query.id}", max_msgs=1)
         await upd.bot_inline_query(bot, inline_query)
 
-        inline_result = await pubsub.listen(topic, 15)
-        if inline_result is None:
+        try:
+            inline_result = await sub.next_msg(15)
+        except TimeoutError:
             await inline_query.delete()
             raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
+        finally:
+            await sub.unsubscribe()
 
         try:
-            results = BotResults.read(BytesIO(inline_result))
+            results = BotResults.read(BytesIO(inline_result.data))
         except InvalidConstructorException as e:
             logger.opt(exception=e).warning("Failed to read bot inline answer")
             raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")  # noqa: B904
@@ -364,9 +368,9 @@ async def set_inline_bot_results(request: SetInlineBotResults, user_id: int) -> 
                 if result_items:
                     await InlineQueryResultItem.bulk_create(result_items)
 
-        await ctx.worker.pubsub.notify(
-            topic=f"bot-inline-query/{query.id}",
-            data=bot_result,
+        await ctx.worker.nats.publish(
+            subject=f"piltover.internal.bot-inline-query.{query.id}",
+            payload=bot_result,
         )
 
     return True

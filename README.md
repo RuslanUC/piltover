@@ -6,7 +6,7 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 
 - [ ] Implement scheduler
 - [x] Gateway can't decode worker's Vector responses
-- [ ] Use nats for pubsub which was removed
+- [x] Use nats for pubsub which was removed
 - [ ] Use jetstream for gateway -> client message queue
 - [ ] Use jetstream for storing session data
 - [ ] Make tests work
