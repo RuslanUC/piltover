@@ -17,7 +17,7 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 
 - [ ] MTProxy support maybe? Obfuscation is already implemented, so why not?
 - [ ] HTTP support
-  - [x] HTTP MTProto tranport
+  - [x] HTTP MTProto transport
   - [ ] HTTP-specific packets handling (e.g. `http_wait`)
 - [ ] Improve the README:
   - [ ] move client setup instructions to a separate files?

@@ -13,7 +13,6 @@ from typing import cast
 
 import uvloop
 from loguru import logger
-from nats import NATS
 from tortoise import Tortoise, connections
 
 from piltover.app.handlers import register_handlers
@@ -21,6 +20,7 @@ from piltover.app.utils.app_create_system_data import create_system_data
 from piltover.cache import Cache
 from piltover.config import TORTOISE_ORM, GATEWAY_CONFIG, SYSTEM_CONFIG
 from piltover.gateway import Gateway
+from piltover.messaging import NatsMessaging, InProcessMessaging
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
 from piltover.utils.debug.measure_queryset_times import patch_queryset_for_measurement
 from piltover.utils.debug.tracing import Tracing
@@ -95,7 +95,12 @@ class PiltoverApp:
             salt_key = os.urandom(32)
             logger.info(f"Salt key is None, generating new one: {base64.b64encode(salt_key).decode('latin1')}")
 
-        self._nats = NATS()
+        if SYSTEM_CONFIG.nats_address is not None:
+            self._messaging = NatsMessaging(SYSTEM_CONFIG.nats_address)
+        elif SYSTEM_CONFIG.run_all_in_one:
+            self._messaging = InProcessMessaging()
+        else:
+            raise ValueError("Either `run_all_in_one` or `nats_address` should be set!")
 
         self._gateway = Gateway(
             data_dir=data_dir,
@@ -104,7 +109,7 @@ class PiltoverApp:
                 public_key=self._public_key,
             ),
             salt_key=salt_key,
-            nats=self._nats,
+            messaging=self._messaging,
         )
 
     def _run_in_memory_scheduler(self) -> tuple[None, None] | tuple[object, asyncio.Task]:
@@ -146,15 +151,15 @@ class PiltoverApp:
 
         worker: Worker | None = None
         if SYSTEM_CONFIG.run_all_in_one:
-            worker = Worker(self._data_dir, self._public_key, self._nats)
-            register_handlers(worker)
+            worker_ = worker = Worker(self._data_dir, self._public_key, self._messaging)
+            register_handlers(worker_)
 
         _, scheduler_task = self._run_in_memory_scheduler()
         telegram_integration_task = self._run_telegram_integration()
 
         logger.success(f"Running on {self._host}:{self._port}")
 
-        await self._nats.connect()
+        await self._messaging.start()
 
         if worker is not None:
             await worker.startup()
@@ -168,8 +173,7 @@ class PiltoverApp:
         if telegram_integration_task is not None:
             await telegram_integration_task
 
-        await self._nats.flush()
-        await self._nats.close()
+        await self._messaging.stop()
 
     @asynccontextmanager
     async def run_test(
@@ -197,7 +201,7 @@ class PiltoverApp:
             create_languages, create_system_stickersets, create_emoji_groups,
         )
 
-        worker = Worker(self._data_dir, self._public_key, self._nats, _testing=True)
+        worker = Worker(self._data_dir, self._public_key, self._messaging, _testing=True)
         register_handlers(worker)
 
         from piltover.app.handlers import testing
@@ -207,7 +211,7 @@ class PiltoverApp:
         if run_scheduler:
             _, scheduler_task = self._run_in_memory_scheduler()
 
-        await self._nats.connect()
+        await self._messaging.start()
 
         await worker.startup()
 
@@ -223,8 +227,7 @@ class PiltoverApp:
             scheduler_task.cancel()
             await scheduler_task
 
-        await self._nats.flush()
-        await self._nats.close()
+        await self._messaging.stop()
         await connections.close_all(True)
         await Cache.obj.clear()
 

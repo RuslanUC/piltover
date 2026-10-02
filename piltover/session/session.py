@@ -11,22 +11,18 @@ from typing import cast, TYPE_CHECKING
 
 from loguru import logger
 from mtproto.transport.packets import DecryptedMessagePacket
-from nats.aio.msg import Msg
-from nats.aio.subscription import Subscription
-from nats.errors import BadSubscriptionError
 from tortoise.expressions import F, Q
 
-import piltover
 from piltover.auth_data import AuthData
-from piltover.cache import Cache
 from piltover.db.enums import PrivacyRuleKeyType
 from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, MessageRef, \
     Chat, Channel
 from piltover.exceptions import Unreachable
+from piltover.messaging import BaseSubscription, BaseMessage
 from piltover.tl import Updates, Long, Int, BadServerSalt, BadMsgNotification, UpdatesTooLong
 from piltover.tl.base.internal import MessageToGateway
 from piltover.tl.core_types import TLObject, Message, MsgContainer
-from piltover.tl.types.internal import ObjectWithLayerRequirement, TaggedLongVector, NeedsContextValues, \
+from piltover.tl.types.internal import ObjectWithLayerRequirement, NeedsContextValues, \
     MessageToClient, SetInternalPush, ChannelSubscribe, ChannelUnsubscribe, NotifyInternalPush
 from piltover.tl.utils import is_content_related, is_id_strictly_not_content_related, is_id_strictly_content_related
 from piltover.utils.debug import measure_time
@@ -88,11 +84,11 @@ class Session:
         self.message_queue = Queue()
         self.message_available: Event | None = None
 
-        self.session_subscriptions: list[Subscription] = []
-        self.user_subscription: Subscription | None = None
-        self.auth_subscription: Subscription | None = None
-        self.internal_push_subscription: Subscription | None = None
-        self.channel_subscriptions: dict[int, Subscription] = {}
+        self.session_subscriptions: list[BaseSubscription] = []
+        self.user_subscription: BaseSubscription | None = None
+        self.auth_subscription: BaseSubscription | None = None
+        self.internal_push_subscription: BaseSubscription | None = None
+        self.channel_subscriptions: dict[int, BaseSubscription] = {}
 
         # TODO: store request states (i.e. received, processing, acked, etc.)
         # TODO: store whole session in redis or something
@@ -104,12 +100,12 @@ class Session:
     def __hash__(self) -> int:
         return hash(self.uniq_id)
 
-    async def _subscribe(self, subject: str) -> Subscription:
+    async def _subscribe(self, subject: str) -> BaseSubscription:
         if self.client is None:
             raise Unreachable
-        return await self.client.server.nats.subscribe(
+        return await self.client.server.messaging.subscribe(
             f"piltover.client.{subject}",
-            cb=self._handle_update,
+            callback=self._handle_update,
         )
 
     # TODO: rewrite
@@ -146,7 +142,7 @@ class Session:
         self.user_subscription = None
         self.auth_subscription = None
 
-    async def _handle_update(self, message: Msg) -> None:
+    async def _handle_update(self, message: BaseMessage) -> None:
         obj = cast(MessageToGateway, TLObject.read(BytesIO(message.data)))
 
         match obj:

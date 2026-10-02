@@ -30,9 +30,8 @@ class _TelegramIntegration(BaseModel):
 class _System(BaseModel):
     data_dir: Path = Path("data")
     database_connection_string: str = "sqlite://data/secrets/piltover.db"
-    run_all_in_one: bool = True  # TODO: add in system.toml
-    rabbitmq_address: str | None = None  # TODO: remove
-    redis_address: str | None = None  # TODO: remove
+    run_all_in_one: bool = True
+    nats_address: str | None = None
     cache: _CacheConfig
     debug_tracing: _TracingConfig
     enable_system_bot: bool = False

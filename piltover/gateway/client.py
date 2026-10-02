@@ -14,7 +14,6 @@ from mtproto.enums import TransportEvent
 from mtproto.transport import Connection
 from mtproto.transport.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMessagePacket, \
     DecryptedMessagePacket, ErrorPacket, QuickAckPacket, BasePacket
-from nats.aio.msg import Msg
 
 from piltover.auth_data import AuthData, GenAuthData
 from piltover.exceptions import Disconnection, InvalidConstructorException, Unreachable
@@ -28,6 +27,7 @@ from piltover.tl.functions.internal import CallRpc
 from piltover.tl.types.internal import RpcResponse
 from piltover.utils.debug import measure_time
 from ..db.models import AuthKey
+from ..messaging import BaseMessage
 
 if TYPE_CHECKING:
     from .server import Gateway
@@ -368,7 +368,7 @@ class Client:
                 for session in sessions
             ))
 
-    async def _send_request_to_worker_get_response(self, request: Message[TLObject], session: Session) -> Msg:
+    async def _send_request_to_worker_get_response(self, request: Message[TLObject], session: Session) -> BaseMessage:
         call_rpc = CallRpc(
             obj=request.obj,
             layer=session.layer,
@@ -386,7 +386,7 @@ class Client:
         start_time = time.perf_counter()
 
         first_timeout = loop.create_future()
-        response = loop.create_task(self.server.nats.request("piltover.worker.rpc.public", call_rpc.write(), 15))
+        response = loop.create_task(self.server.messaging.request("piltover.worker.rpc.public", call_rpc.write(), 15))
 
         done, pending = await asyncio.wait((first_timeout, response), timeout=1.5, return_when=asyncio.FIRST_COMPLETED)
         first_timeout.cancel()

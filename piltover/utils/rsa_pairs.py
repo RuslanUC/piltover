@@ -1,10 +1,11 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from hashlib import sha1
 from typing import cast
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 
 
 @dataclass(slots=True)
@@ -27,7 +28,7 @@ def get_public_key_fingerprint(public_key: str, signed: bool = False) -> int:
     # server_public_key_fingerprints is a list of public RSA key fingerprints
     # (64 lower-order bits of SHA1 (server_public_key);
 
-    key: RSAPublicKey = load_public_key(public_key=public_key)
+    key = load_public_key(public_key=public_key)
     num = key.public_numbers()
     n, e = num.n, num.e
 
@@ -38,12 +39,12 @@ def get_public_key_fingerprint(public_key: str, signed: bool = False) -> int:
     return int.from_bytes(sha1(rsa_public_key).digest()[-8:], "little", signed=signed)
 
 
-def load_private_key(private_key: str):
-    return serialization.load_pem_private_key(private_key.encode(), password=None)
+def load_private_key(private_key: str) -> rsa.RSAPrivateKey:
+    return cast(rsa.RSAPrivateKey, serialization.load_pem_private_key(private_key.encode(), password=None))
 
 
-def load_public_key(public_key: str) -> RSAPublicKey:
-    return cast(RSAPublicKey, serialization.load_pem_public_key(public_key.encode()))
+def load_public_key(public_key: str) -> rsa.RSAPublicKey:
+    return cast(rsa.RSAPublicKey, serialization.load_pem_public_key(public_key.encode()))
 
 
 def gen_keys() -> Keys:

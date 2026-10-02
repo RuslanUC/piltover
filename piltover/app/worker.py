@@ -8,6 +8,7 @@ from tortoise import Tortoise
 from piltover.app.handlers import register_handlers
 from piltover.cache import Cache
 from piltover.config import SYSTEM_CONFIG, TORTOISE_ORM, WORKER_CONFIG
+from piltover.messaging import NatsMessaging
 from piltover.utils.debug.tracing import Tracing
 from piltover.worker import Worker
 
@@ -17,12 +18,15 @@ async def main() -> None:
     if not pubkey.exists():
         raise RuntimeError(f"Public key at path \"{pubkey.absolute()}\" does not exist!")
 
-    nats = NATS()
+    if SYSTEM_CONFIG.nats_address is not None:
+        messaging = NatsMessaging(SYSTEM_CONFIG.nats_address)
+    else:
+        raise ValueError("To run worker separately from app, `nats_address` should be set!")
 
     worker = Worker(
         data_dir=SYSTEM_CONFIG.data_dir,
         public_key=pubkey.read_text(),
-        nats=nats,
+        messaging=messaging,
     )
 
     register_handlers(worker)
@@ -38,7 +42,7 @@ async def main() -> None:
         Tracing.init(SYSTEM_CONFIG.debug_tracing.backend, zipkin_address=SYSTEM_CONFIG.debug_tracing.zipkin_address)
     await Tortoise.init(config=TORTOISE_ORM)
 
-    await nats.connect()
+    await messaging.start()
     await worker.startup()
 
     await asyncio.get_running_loop().create_future()

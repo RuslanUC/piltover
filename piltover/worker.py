@@ -7,14 +7,12 @@ from pathlib import Path
 from typing import Any, TypeVar, cast, Protocol, ParamSpec
 
 from loguru import logger
-from nats import NATS
-from nats.aio.msg import Msg
 
-from piltover import context
 from piltover.context import RequestContext, request_ctx, NeedContextValuesContext
 from piltover.db.models import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
+from piltover.messaging import BaseMessaging, BaseMessage
 from piltover.storage import LocalFileStorage
 from piltover.tl import TLObject, RpcError, TLRequest
 from piltover.tl.core_types import RpcResult
@@ -114,22 +112,22 @@ class MessageHandler:
 
 
 class Worker(MessageHandler):
-    def __init__(self, data_dir: Path, public_key: str, nats: NATS, *, _testing: bool = False) -> None:
+    def __init__(self, data_dir: Path, public_key: str, messaging: BaseMessaging, *, _testing: bool = False) -> None:
         super().__init__()
 
         self._storage = LocalFileStorage(data_dir)
         self.public_key = public_key
         self.fingerprint: int = get_public_key_fingerprint(self.public_key)
 
-        self.nats = nats
+        self.messaging = messaging
         self._testing = _testing
 
     async def startup(self) -> None:
-        await self.nats.subscribe("piltover.worker.rpc.public", queue="workers", cb=self._handle_tl_rpc)
-        await self.nats.subscribe("piltover.worker.rpc.internal", queue="workers", cb=self._handle_tl_rpc_internal)
+        await self.messaging.subscribe("piltover.worker.rpc.public", self._handle_tl_rpc, "workers")
+        await self.messaging.subscribe("piltover.worker.rpc.internal", self._handle_tl_rpc_internal, "workers")
 
     async def call_internal(self, request: TLObject) -> None:
-        await self.nats.publish("piltover.worker.rpc.internal", CallRpcInternal(obj=request).write())
+        await self.messaging.publish("piltover.worker.rpc.internal", CallRpcInternal(obj=request).write())
 
     @classmethod
     async def get_user(cls, call: CallRpc, allow_mfa_pending: bool = False, with_username: bool = False) -> User | None:
@@ -144,12 +142,12 @@ class Worker(MessageHandler):
 
         return await query
 
-    async def _handle_tl_rpc_measure_time(self, message: Msg) -> None:
+    async def _handle_tl_rpc_measure_time(self, message: BaseMessage) -> None:
         with measure_time("_handle_tl_rpc()"):
             return await self._handle_tl_rpc(message)
 
     @staticmethod
-    async def _reply_err(request: Msg, req_msg_id: int, code: int, message: str) -> None:
+    async def _reply_err(request: BaseMessage, req_msg_id: int, code: int, message: str) -> None:
         response = RpcResponse(
             obj=RpcResult(
                 req_msg_id=req_msg_id,
@@ -160,12 +158,11 @@ class Worker(MessageHandler):
         await request.respond(response.write())
 
     @staticmethod
-    async def _err_response_internal(request: Msg, code: int, message: str) -> None:
+    async def _err_response_internal(request: BaseMessage, code: int, message: str) -> None:
         response = RpcError(error_code=code, error_message=message)
-        if request.reply:
-            await request.respond(response.write())
+        await request.respond(response.write())
 
-    async def _handle_tl_rpc(self, message: Msg) -> None:
+    async def _handle_tl_rpc(self, message: BaseMessage) -> None:
         with measure_time("read CallRpc"):
             call = CallRpc.read(BytesIO(message.data), True)
 
@@ -245,7 +242,7 @@ class Worker(MessageHandler):
 
         return await message.respond(response.write())
 
-    async def _handle_tl_rpc_internal(self, message: Msg) -> None:
+    async def _handle_tl_rpc_internal(self, message: BaseMessage) -> None:
         with measure_time("read CallRpc"):
             call = CallRpcInternal.read(BytesIO(message.data), True)
 
@@ -282,8 +279,7 @@ class Worker(MessageHandler):
 
         logger.trace("Returning internal result: {result!r}", result=result)
 
-        if message.reply:
-            await message.respond(result.write())
+        await message.respond(result.write())
 
     async def send_message_to_client(
             self, obj: TLObject, user_id: int | list[int] | None = None, key_id: int | list[int] | None = None,
@@ -334,16 +330,16 @@ class Worker(MessageHandler):
         to_send = MessageToClient(ignore_session_id=ignore_session_id, obj=obj).write()
 
         for publish_user_id in user_ids:
-            await self.nats.publish(f"piltover.client.user.{publish_user_id}", to_send)
+            await self.messaging.publish(f"piltover.client.user.{publish_user_id}", to_send)
         for publish_key_id in key_ids:
-            await self.nats.publish(f"piltover.client.key.{publish_key_id}", to_send)
+            await self.messaging.publish(f"piltover.client.key.{publish_key_id}", to_send)
         for publish_channel_id in channel_ids:
-            await self.nats.publish(f"piltover.client.channel-sub.{publish_channel_id}", to_send)
+            await self.messaging.publish(f"piltover.client.channel-sub.{publish_channel_id}", to_send)
         for publish_auth_id in auth_ids:
-            await self.nats.publish(f"piltover.client.auth.{publish_auth_id}", to_send)
+            await self.messaging.publish(f"piltover.client.auth.{publish_auth_id}", to_send)
 
     async def subscribe_to_internal_push(self, key_id: int, session_id: int) -> None:
-        await self.nats.publish(f"piltover.client.session.{key_id}-{session_id}", SetInternalPush().write())
+        await self.messaging.publish(f"piltover.client.session.{key_id}-{session_id}", SetInternalPush().write())
 
     async def send_internal_push(self, user_id: int | list[int]) -> None:
         if not user_id:
@@ -357,14 +353,14 @@ class Worker(MessageHandler):
         to_send = NotifyInternalPush().write()
 
         for publish_user_id in user_ids:
-            await self.nats.publish(f"piltover.client.internal-push.{publish_user_id}", to_send)
+            await self.messaging.publish(f"piltover.client.internal-push.{publish_user_id}", to_send)
 
     async def subscribe_to_channel(self, channel_id: int, user_ids: list[int]) -> None:
         to_send = ChannelSubscribe(channel_id=channel_id).write()
         for user_id in user_ids:
-            await self.nats.publish(f"piltover.client.user.{user_id}", to_send)
+            await self.messaging.publish(f"piltover.client.user.{user_id}", to_send)
 
     async def unsubscribe_from_channel(self, channel_id: int, user_ids: list[int]) -> None:
         to_send = ChannelUnsubscribe(channel_id=channel_id).write()
         for user_id in user_ids:
-            await self.nats.publish(f"piltover.client.user.{user_id}", to_send)
+            await self.messaging.publish(f"piltover.client.user.{user_id}", to_send)
