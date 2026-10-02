@@ -54,7 +54,7 @@ class Session:
         "client", "session_id", "auth_data", "min_msg_id", "user_id", "auth_id", "auth_loaded_at",
         "channels_loaded_at", "salt_now", "salt_prev", "no_updates", "layer", "is_bot", "mfa_pending", "msg_id_values",
         "out_seq_no", "message_queue", "message_available", "had_init_connection", "internal_push_subscription",
-        "channel_subscriptions", "session_subscriptions", "user_subscription", "auth_subscription",
+        "channel_subscriptions", "session_subscriptions", "user_subscription", "auth_subscription", "is_internal_push",
     )
 
     def __init__(self, session_id: int, client: Client | None = None, auth_data: AuthData | None = None) -> None:
@@ -72,6 +72,7 @@ class Session:
         self.mfa_pending = False
         self.auth_loaded_at = 0.
         self.had_init_connection = False
+        self.is_internal_push = False
 
         self.channels_loaded_at = 0.
 
@@ -147,7 +148,7 @@ class Session:
 
         match obj:
             case MessageToClient():
-                if obj.ignore_session_id == self.session_id:
+                if obj.ignore_session_id == self.session_id or self.is_internal_push:
                     return
                 await self.enqueue(obj.obj, False)
             case SetInternalPush():
@@ -155,6 +156,7 @@ class Session:
                     return
                 await self.refresh_auth_maybe(True)
                 if self.user_id:
+                    self.is_internal_push = True
                     self.internal_push_subscription = await self._subscribe(f"internal-push.{self.user_id}")
                 logger.debug(f"Registered session {self.session_id} for internal push")
             case ChannelSubscribe():

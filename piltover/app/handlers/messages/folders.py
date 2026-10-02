@@ -36,7 +36,7 @@ async def get_dialog_filters(user_id: int) -> DialogFilters:
 @handler.on_request(GetDialogFilters_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_dialog_filters_133(user_id: int) -> list[TLDialogFilterBase]:
     result = await get_dialog_filters(user_id)
-    return result.filters
+    return ObjectVectorToFormat(vec=result.filters)
 
 
 @handler.on_request(UpdateDialogFilter, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
