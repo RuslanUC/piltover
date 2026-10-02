@@ -53,5 +53,6 @@ class BaseMessaging(ABC):
             subject: str,
             callback: Callable[[BaseMessage], Awaitable[None]] | None = None,
             queue: str = "",
+            **backend_args,
     ) -> BaseSubscription:
         ...

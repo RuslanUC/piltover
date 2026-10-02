@@ -72,6 +72,7 @@ class NatsMessaging(BaseMessaging):
             subject: str,
             callback: Callable[[BaseMessage], Awaitable[None]] | None = None,
             queue: str = "",
+            **backend_args,
     ) -> BaseSubscription:
         if callback is None:
             _callback = None
@@ -80,5 +81,5 @@ class NatsMessaging(BaseMessaging):
             async def _callback(msg: Msg) -> None:
                 await callback(NatsMessage(msg))
 
-        sub = await self._client.subscribe(subject, queue, _callback)
+        sub = await self._client.subscribe(subject, queue, _callback, **backend_args)
         return NatsSubscription(sub)

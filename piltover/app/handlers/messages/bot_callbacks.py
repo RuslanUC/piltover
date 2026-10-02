@@ -88,15 +88,15 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user_id: int) -
         return resp
     else:
         ctx = request_ctx.get()
-        nats = ctx.worker.nats
+        messaging = ctx.worker.messaging
 
         query = await CallbackQuery.create(user_id=user_id, message=message_for_bot, data=request.data)
 
-        sub = await nats.subscribe(f"piltover.internal.bot-callback-query.{query.id}", max_msgs=1)
+        sub = await messaging.subscribe(f"piltover.internal.bot-callback-query.{query.id}", max_msgs=1)
         await upd.bot_callback_query(cast(MessageRef, message_for_bot).content.author_id, query)
 
         try:
-            result = await sub.next_msg(15)
+            result = await sub.receive(15)
         except TimeoutError:
             await query.delete()
             raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
@@ -127,7 +127,7 @@ async def set_bot_callback_answer(request: SetBotCallbackAnswer, user_id: int) -
         if query is None:
             raise ErrorRpc(error_code=400, error_message="QUERY_ID_INVALID")
 
-        await ctx.worker.nats.publish(
+        await ctx.worker.messaging.publish(
             subject=f"piltover.internal.bot-callback-query.{query.id}",
             payload=BotCallbackAnswer(
                 alert=request.alert,
@@ -219,15 +219,15 @@ async def get_inline_bot_results(request: GetInlineBotResults, user_id: int) -> 
         return await result.to_tl(items)
     else:
         ctx = request_ctx.get()
-        nats = ctx.worker.nats
+        messaging = ctx.worker.messaging
 
         await inline_query.save()
 
-        sub = await nats.subscribe(f"piltover.internal.bot-inline-query.{inline_query.id}", max_msgs=1)
+        sub = await messaging.subscribe(f"piltover.internal.bot-inline-query.{inline_query.id}", max_msgs=1)
         await upd.bot_inline_query(bot, inline_query)
 
         try:
-            inline_result = await sub.next_msg(15)
+            inline_result = await sub.receive(15)
         except TimeoutError:
             await inline_query.delete()
             raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
@@ -368,7 +368,7 @@ async def set_inline_bot_results(request: SetInlineBotResults, user_id: int) -> 
                 if result_items:
                     await InlineQueryResultItem.bulk_create(result_items)
 
-        await ctx.worker.nats.publish(
+        await ctx.worker.messaging.publish(
             subject=f"piltover.internal.bot-inline-query.{query.id}",
             payload=bot_result,
         )
