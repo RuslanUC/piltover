@@ -388,7 +388,7 @@ class Client:
         first_timeout = loop.create_future()
         response = loop.create_task(self.server.messaging.request("piltover.worker.rpc.public", call_rpc.write(), 15))
 
-        done, pending = await asyncio.wait((first_timeout, response), timeout=1.5, return_when=asyncio.FIRST_COMPLETED)
+        done, _ = await asyncio.wait((first_timeout, response), timeout=1.5, return_when=asyncio.FIRST_COMPLETED)
         first_timeout.cancel()
 
         if response not in done:
@@ -411,15 +411,14 @@ class Client:
             return await SYSTEM_HANDLERS[request.obj.tlid()](self, request, session)
 
         with measure_time("\"execute task\""):
-            with measure_time("._send_request_to_worker_get_response()"):
-                try:
-                    task_result = await self._send_request_to_worker_get_response(request, session)
-                except Exception as e:  # noqa: BLE001
-                    logger.opt(exception=e).error(f"Failed to get result for request {request!r}")
-                    return RpcResult(
-                        req_msg_id=request.message_id,
-                        result=RpcError(error_code=500, error_message="INTERNAL_SERVER_ERROR_TIMEOUT"),
-                    )
+            try:
+                task_result = await self._send_request_to_worker_get_response(request, session)
+            except Exception as e:  # noqa: BLE001
+                logger.opt(exception=e).error(f"Failed to get result for request {request!r}")
+                return RpcResult(
+                    req_msg_id=request.message_id,
+                    result=RpcError(error_code=500, error_message="INTERNAL_SERVER_ERROR_TIMEOUT"),
+                )
 
         result = RpcResponse.read(BytesIO(task_result.data))
         if not isinstance(result, RpcResponse):

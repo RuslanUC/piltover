@@ -99,7 +99,7 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user_id: int) -
             result = await sub.receive(15)
         except TimeoutError:
             await query.delete()
-            raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
+            raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")  # noqa: B904
         finally:
             await sub.unsubscribe()
 
@@ -230,7 +230,7 @@ async def get_inline_bot_results(request: GetInlineBotResults, user_id: int) -> 
             inline_result = await sub.receive(15)
         except TimeoutError:
             await inline_query.delete()
-            raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
+            raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")  # noqa: B904
         finally:
             await sub.unsubscribe()
 

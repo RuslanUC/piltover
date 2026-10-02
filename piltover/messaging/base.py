@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Callable, Awaitable
-from nats.aio.msg import Msg
+from collections.abc import Callable, Awaitable
 
 
 class BaseSubscription(ABC):

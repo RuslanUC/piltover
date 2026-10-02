@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import random
-from typing import Callable, Awaitable, override
+from collections.abc import Callable, Awaitable
+from typing import override
 from uuid import uuid4
 
 from .base import BaseSubscription, BaseMessage, BaseMessaging
