@@ -106,10 +106,10 @@ class MessageHandler:
                 logger.warning(f"Overriding existing handler for ({hex(new_handler_id)[2:]})")
 
         self.request_handlers.update(handler.request_handlers)
-        if clear:
-            handler.request_handlers.clear()
 
         if not isinstance(self, Worker) or not self._testing:
+            if clear:
+                handler.request_handlers.clear()
             handler.registered = True
 
 
@@ -173,7 +173,7 @@ class Worker(MessageHandler):
 
         req_message_id = cast(int, call.message_id)
 
-        if not (handler := self.request_handlers.get(call.obj.tlid())) or handler.is_internal:
+        if (handler := self.request_handlers.get(call.obj.tlid())) is None:
             logger.warning("No handler found for obj: {obj}", obj=call.obj)
             return await self._reply_err(message, req_message_id, 500, "NOT_IMPLEMENTED")
         if handler.is_internal:

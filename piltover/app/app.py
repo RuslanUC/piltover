@@ -207,7 +207,7 @@ class PiltoverApp:
         if run_scheduler:
             _, scheduler_task = self._run_in_memory_scheduler()
 
-        await self._gateway.nats.connect()
+        await self._nats.connect()
 
         await worker.startup()
 

@@ -141,7 +141,7 @@ async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config
             scheduler.startup = _empty_async_func
             scheduler.shutdown = _empty_async_func
 
-        test_server: Gateway = await stack.enter_async_context(app.run_test(
+        server_info: tuple[Gateway, str, int] = await stack.enter_async_context(app.run_test(
             create_countries=create_countries, create_reactions=create_reactions, create_chat_themes=create_chat_themes,
             create_peer_colors=create_peer_colors, create_languages=create_languages,
             create_system_stickersets=create_system_stickersets, create_emoji_groups=create_emoji_groups,
@@ -150,6 +150,8 @@ async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config
             scheduler_loop_interval=1,
         ))
 
+        test_server, server_host, server_port = server_info
+
         server_reset_token = server_instance.set(test_server)
         skip_auth_reset_token = skipping_auth.set(not real_key_gen and not real_auth)
 
@@ -157,8 +159,8 @@ async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config
             Auth.create = _custom_auth_create
             setattr(Auth, "_real_auth", real_auth)
 
-        print(f"Running on {test_server.port}")
-        setup_test_dc(test_server)
+        print(f"Running on {server_port}")
+        setup_test_dc(test_server, server_host, server_port)
 
         yield test_server
 

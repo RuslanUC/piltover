@@ -136,7 +136,7 @@ class TestDataCenter(DataCenter):
                 adresses[dc_id] = host
 
 
-def setup_test_dc(server: Gateway) -> None:
+def setup_test_dc(server: Gateway, host: str, port: int) -> None:
     from piltover.utils import get_public_key_fingerprint
 
     fingerprint = get_public_key_fingerprint(server.server_keys.public_key, signed=True)
@@ -144,7 +144,7 @@ def setup_test_dc(server: Gateway) -> None:
     rsa.server_public_keys[fingerprint] = PublicKey(public_key.n, public_key.e)
 
     DataCenter.__new__ = TestDataCenter.__new__
-    TestDataCenter.set_address(server.host, server.port)
+    TestDataCenter.set_address(host, port)
 
 
 class TransportError(RuntimeError):
