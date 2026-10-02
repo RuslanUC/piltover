@@ -123,7 +123,13 @@ class InProcessMessaging(BaseMessaging):
         return sub
 
     def unsubscribe(self, sub: InProcessSubscription) -> None:
-        self._subscriptions_by_subject[sub.subject][sub.queue].remove(sub)
+        if sub.subject not in self._subscriptions_by_subject:
+            return
+        if sub.queue not in self._subscriptions_by_subject[sub.subject]:
+            return
+
+        self._subscriptions_by_subject[sub.subject][sub.queue].discard(sub)
+
         if not self._subscriptions_by_subject[sub.subject][sub.queue]:
             del self._subscriptions_by_subject[sub.subject][sub.queue]
         if not self._subscriptions_by_subject[sub.subject]:

@@ -9,8 +9,8 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 - [x] Use nats for pubsub which was removed
 - [ ] Use jetstream for gateway -> client message queue
 - [ ] Use jetstream for storing session data
-- [ ] Make tests work
-- [ ] Add in-process message queue for pure-python single-process runs without nats
+- [x] Make tests work
+- [x] Add in-process message queue for pure-python single-process runs without nats
 - [ ] Maybe something else I forgot?
 
 ## TODO

@@ -1,6 +1,7 @@
 [system]
 data_dir = "data/testing"
 database_connection_string = "sqlite://:memory:"
+run_all_in_one = true
 
 [system.cache]
 backend = "memory"
