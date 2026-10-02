@@ -89,10 +89,12 @@ class InProcessMessaging(BaseMessaging):
         for queue, subs in self._subscriptions_by_subject[subject].items():
             if not queue:
                 for sub in subs:
-                    self._tasks.add(loop.create_task(sub.new_message(message)))
+                    self._tasks.add(task := loop.create_task(sub.new_message(message)))
+                    task.add_done_callback(self._tasks.discard)
             else:
                 sub = random.choice(list(subs))
-                self._tasks.add(loop.create_task(sub.new_message(message)))
+                self._tasks.add(task := loop.create_task(sub.new_message(message)))
+                task.add_done_callback(self._tasks.discard)
 
     @override
     async def request(self, subject: str, payload: bytes, timeout: float) -> BaseMessage:

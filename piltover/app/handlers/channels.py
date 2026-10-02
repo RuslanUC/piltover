@@ -184,9 +184,8 @@ async def _add_user_to_channel(channel: Channel, peer_channel: Peer, user_id: in
     if user_is_creator:
         await channel.sync_admins_count(False)
     await Dialog.create_or_unhide(user_id, peer_channel)
-    ctx = request_ctx.get(None)
-    if ctx is not None:
-        await ctx.worker.subscribe_to_channel(channel.id, [user_id])
+    ctx = request_ctx.get()
+    await ctx.worker.subscribe_to_channel(channel.id, [user_id])
 
     return participant
 

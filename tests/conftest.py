@@ -6,6 +6,7 @@ import logging
 from asyncio import Task, CancelledError
 from contextlib import AsyncExitStack
 from os import urandom
+from pathlib import Path
 from typing import AsyncIterator, TypeVar, TYPE_CHECKING, Protocol, overload, Literal, NoReturn, Any, Generator
 
 import pytest
@@ -381,6 +382,8 @@ async def test_channel(faker: Faker) -> ChannelFactory:
     from piltover.app.handlers.channels import _create_channel, _add_user_to_channel
     from piltover.app.handlers.messages.sending import send_message_internal
     from piltover.tl.types import MessageActionChannelCreate
+    from piltover.context import request_ctx, RequestContext
+    from piltover.worker import Worker
 
     async def _create_channel_or_group(
             client: TestClient, supergroup: bool = False, name: str | None = None, create_service_message: bool = False,
@@ -391,14 +394,23 @@ async def test_channel(faker: Faker) -> ChannelFactory:
         owner = await User.get(phone_number=client.phone_number).only("id")
         owner.bot = False
         channel, peer_channel = await _create_channel(owner.id, name, "", not supergroup, supergroup)
-        await _add_user_to_channel(channel, peer_channel, owner.id)
 
-        if create_service_message:
-            await send_message_internal(
-                owner, peer_channel, None, None, False,
-                author=owner, type=MessageType.SERVICE_CHANNEL_CREATE,
-                extra_info=MessageActionChannelCreate(title=name).write(),
-            )
+        gw = server_instance.get()
+        messaging = gw.messaging
+        pubkey = gw.server_keys.public_key
+        data_dir = Path(gw.data_dir)
+        token = request_ctx.set(RequestContext(0, 0, 0, 0, 0, 0, 0, Worker(data_dir, pubkey, messaging), None))
+
+        try:
+            await _add_user_to_channel(channel, peer_channel, owner.id)
+            if create_service_message:
+                await send_message_internal(
+                    owner, peer_channel, None, None, False,
+                    author=owner, type=MessageType.SERVICE_CHANNEL_CREATE,
+                    extra_info=MessageActionChannelCreate(title=name).write(),
+                )
+        finally:
+            request_ctx.reset(token)
 
         return channel.make_id()
 
@@ -411,6 +423,8 @@ async def channel_with_clients(
 ) -> ChannelWithClientsFactory:
     from piltover.db.models import User, Channel, Peer
     from piltover.app.handlers.channels import _add_user_to_channel
+    from piltover.context import request_ctx, RequestContext
+    from piltover.worker import Worker
 
     async def _create_clients_and_channel(
             num_clients: int = 1, owner_phone: str | None = None, supergroup: bool = False, name: str | None = None,
@@ -423,11 +437,20 @@ async def channel_with_clients(
 
         clients = [owner]
 
-        for _ in range(num_clients - 1):
-            client = await client_with_auth(run=clients_run)
-            user = await User.get(phone_number=client.phone_number)
-            await _add_user_to_channel(channel, channel_peer, user.id)
-            clients.append(client)
+        gw = server_instance.get()
+        messaging = gw.messaging
+        pubkey = gw.server_keys.public_key
+        data_dir = Path(gw.data_dir)
+        token = request_ctx.set(RequestContext(0, 0, 0, 0, 0, 0, 0, Worker(data_dir, pubkey, messaging), None))
+
+        try:
+            for _ in range(num_clients - 1):
+                client = await client_with_auth(run=clients_run)
+                user = await User.get(phone_number=client.phone_number)
+                await _add_user_to_channel(channel, channel_peer, user.id)
+                clients.append(client)
+        finally:
+            request_ctx.reset(token)
 
         if resolve_channel:
             assert clients_run
