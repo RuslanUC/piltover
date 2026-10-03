@@ -54,9 +54,7 @@ from .chat_wallpaper import ChatWallpaper
 from .installed_wallpaper import InstalledWallpaper
 from .message_mention import MessageMention
 from .peer_color_option import PeerColorOption
-from .taskiq_scheduled_message import TaskIqScheduledMessage
 from .available_channel_reaction import AvailableChannelReaction
-from .taskiq_scheduled_delete_message import TaskIqScheduledDeleteMessage
 from .user_personal_channel import UserPersonalChannel
 from .bot import Bot
 from .botfather_state import BotFatherUserState
@@ -98,3 +96,4 @@ from .uploading_file_small_part import UploadingFileSmallPart
 from .uploading_file_big_part import UploadingFileBigPart
 from .uploading_file_small import UploadingFileSmall
 from .uploading_file_big import UploadingFileBig
+from .scheduled_task import ScheduledTask

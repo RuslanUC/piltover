@@ -534,3 +534,15 @@ CALL_DISCARD_REASON_FROM_TL: dict[type[TLPhoneCallDiscardReasonBase], CallDiscar
     PhoneCallDiscardReasonHangup: CallDiscardReason.HANGUP,
     PhoneCallDiscardReasonBusy: CallDiscardReason.BUSY,
 }
+
+
+class ScheduledTaskType(IntEnum):
+    SEND_MESSAGE = 1
+    DELETE_MESSAGE = 2
+
+
+class ScheduledTaskState(IntEnum):
+    SCHEDULED = 0
+    DISPATCHING = 1
+    EXECUTING = 2
+    FAILED = 3

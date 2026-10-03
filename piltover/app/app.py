@@ -6,7 +6,6 @@ import base64
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -21,6 +20,7 @@ from piltover.cache import Cache
 from piltover.config import TORTOISE_ORM, GATEWAY_CONFIG, SYSTEM_CONFIG
 from piltover.gateway import Gateway
 from piltover.messaging import NatsMessaging, InProcessMessaging
+from piltover.scheduler import Scheduler
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
 from piltover.utils.debug.measure_queryset_times import patch_queryset_for_measurement
 from piltover.utils.debug.tracing import Tracing
@@ -112,12 +112,6 @@ class PiltoverApp:
             messaging=self._messaging,
         )
 
-    def _run_in_memory_scheduler(self) -> tuple[None, None] | tuple[object, asyncio.Task]:
-        if not SYSTEM_CONFIG.run_all_in_one:
-            return None, None
-
-        return None, None  # TODO: scheduler
-
     @staticmethod
     def _run_telegram_integration() -> asyncio.Task | None:
         tg_integration = SYSTEM_CONFIG.telegram_integration
@@ -150,11 +144,16 @@ class PiltoverApp:
         )
 
         worker: Worker | None = None
+        scheduler: Scheduler | None = None
+        scheduler_task: asyncio.Task | None = None
+        scheduler_event = asyncio.Event()
+
         if SYSTEM_CONFIG.run_all_in_one:
             worker_ = worker = Worker(self._data_dir, self._public_key, self._messaging)
             register_handlers(worker_)
 
-        _, scheduler_task = self._run_in_memory_scheduler()
+            scheduler = Scheduler(self._messaging)
+
         telegram_integration_task = self._run_telegram_integration()
 
         logger.success(f"Running on {self._host}:{self._port}")
@@ -163,12 +162,15 @@ class PiltoverApp:
 
         if worker is not None:
             await worker.startup()
+        if scheduler is not None:
+            scheduler_task = asyncio.get_running_loop().create_task(scheduler.run(scheduler_event))
 
         server = await asyncio.start_server(self._gateway.accept_client, self._host, self._port)
         async with server:
             await server.serve_forever()
 
         if scheduler_task is not None:
+            scheduler_event.set()
             await scheduler_task
         if telegram_integration_task is not None:
             await telegram_integration_task
@@ -180,8 +182,7 @@ class PiltoverApp:
             self, create_sys_user: bool = True, create_countries: bool = False, create_reactions: bool = False,
             create_chat_themes: bool = False, create_peer_colors: bool = False, create_languages: bool = False,
             create_system_stickersets: bool = False, create_emoji_groups: bool = False, run_scheduler: bool = False,
-            run_actual_server: bool = False, scheduler_update_interval: timedelta | None = None,
-            scheduler_loop_interval: timedelta | None = None,
+            run_actual_server: bool = False,
     ) -> AsyncIterator[tuple[Gateway, str, int]]:
         if not SYSTEM_CONFIG.run_all_in_one:
             raise ValueError("Test server requires `run_all_in_one` to be set")
@@ -207,13 +208,16 @@ class PiltoverApp:
         from piltover.app.handlers import testing
         worker.register_handler(testing.handler)
 
-        scheduler_task: asyncio.Task | None = None
-        if run_scheduler:
-            _, scheduler_task = self._run_in_memory_scheduler()
+        scheduler = Scheduler(self._messaging, loop_interval=1)
+        scheduler_event = asyncio.Event()
 
         await self._messaging.start()
 
         await worker.startup()
+
+        scheduler_task: asyncio.Task | None = None
+        if run_scheduler:
+            scheduler_task = asyncio.get_running_loop().create_task(scheduler.run(scheduler_event))
 
         if run_actual_server:
             server = await asyncio.start_server(self._gateway.accept_client, "127.0.0.1", 0)
@@ -224,7 +228,7 @@ class PiltoverApp:
             yield self._gateway, "0.0.0.0", -1
 
         if scheduler_task is not None:
-            scheduler_task.cancel()
+            scheduler_event.set()
             await scheduler_task
 
         await self._messaging.stop()

@@ -1,15 +1,29 @@
-from taskiq import TaskiqEvents, TaskiqScheduler, TaskiqState
+import asyncio
+
+import uvloop
 from tortoise import Tortoise
 
-from piltover.app.utils.config_helper import make_broker_from_config
-from piltover.config import TORTOISE_ORM
-from piltover.scheduler import OrmDatabaseScheduleSource
+from piltover.config import SYSTEM_CONFIG, TORTOISE_ORM
+from piltover.messaging import NatsMessaging
+from piltover.scheduler import Scheduler
 
 
-async def _init_db(_: TaskiqState) -> None:
+async def main() -> None:
+    if SYSTEM_CONFIG.nats_address is not None:
+        messaging = NatsMessaging(SYSTEM_CONFIG.nats_address)
+    else:
+        raise ValueError("To run scheduler separately from app, `nats_address` should be set!")
+
+    scheduler = Scheduler(messaging=messaging)
+
     await Tortoise.init(config=TORTOISE_ORM)
+    await messaging.start()
+
+    asyncio.get_running_loop().run_until_complete(scheduler.run())
 
 
-broker = make_broker_from_config()
-broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, _init_db)
-scheduler = TaskiqScheduler(broker, sources=[OrmDatabaseScheduleSource()])
+if __name__ == "__main__":
+    try:
+        uvloop.run(main())
+    except KeyboardInterrupt:
+        pass

@@ -15,11 +15,12 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import process_message_entities, process_reply_markup, B64URL_STR_RE
 from piltover.config import APP_CONFIG, DICE_CONFIG
 from piltover.context import request_ctx
-from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, FileType, ChatAdminRights
-from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, \
-    SavedDialog, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
-    TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem, Channel, \
-    SlowmodeLastMessage, MessageRef, MessageContent, Username, MessageFwdHeader, UploadingFileBase
+from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, FileType, ChatAdminRights, \
+    ScheduledTaskState, ScheduledTaskType
+from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, SavedDialog, \
+    ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, Contact, RecentSticker, InlineQueryResultItem, \
+    Channel, SlowmodeLastMessage, MessageRef, MessageContent, Username, MessageFwdHeader, UploadingFileBase, \
+    ScheduledTask
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.db.models.peer import peer_is_owned_min, peer_is_user, peer_is_channel, peer_is_chat
 from piltover.enums import ReqHandlerFlags
@@ -73,15 +74,15 @@ async def _extract_mentions_from_message(entities: list[dict], text: str, author
     if not mentioned_usernames and not mentioned_user_ids:
         return set()
 
-    query = Q()
     if mentioned_usernames:
-        query |= Q(username__username__in=list(mentioned_usernames))
-    if mentioned_user_ids:
-        query |= Q(id__in=list(mentioned_user_ids))
+        mentioned_user_ids.extend(
+            cast(
+                list[int],
+                await User.filter(username__username__in=list(mentioned_usernames)).values_list("id", flat=True),
+            )
+        )
 
-    return set(
-        cast(list[int], await User.filter(id__not=author_id).filter(query).values_list("id", flat=True))
-    )
+    return mentioned_user_ids
 
 
 async def send_created_messages_internal(
@@ -119,17 +120,20 @@ async def send_created_messages_internal(
 
     ttl_tasks = []
     for message_ref in messages:
-        if message_ref.content.ttl_period_days:
-            ttl_tasks.append(TaskIqScheduledDeleteMessage(
-                message=message_ref.content,
-                scheduled_for=(
-                        int(message_ref.content.date.timestamp())
-                        + message_ref.content.ttl_period_days * MessageContent.TTL_MULT
-                ),
-            ))
+        if not message_ref.content.ttl_period_days:
+            continue
+        ttl_seconds = message_ref.content.ttl_period_days * MessageContent.TTL_MULT
+        scheduled_at = message_ref.content.date + timedelta(seconds=ttl_seconds)
+        ttl_tasks.append(ScheduledTask(
+            type=ScheduledTaskType.DELETE_MESSAGE,
+            state=ScheduledTaskState.SCHEDULED,
+            scheduled_at=scheduled_at,
+            next_attempt_at=scheduled_at,
+            message=message_ref,
+        ))
 
     if ttl_tasks:
-        await TaskIqScheduledDeleteMessage.bulk_create(ttl_tasks)
+        await ScheduledTask.bulk_create(ttl_tasks)
 
     if peer.type is PeerType.CHANNEL:
         if len(messages) != 1:
@@ -219,17 +223,6 @@ async def send_message_internal(
             reply_quote_text = quote_text
             reply_quote_offset = quote_offset
 
-    mentioned_user_ids = set()
-
-    if opposite and (peer_is_chat(peer_) or (peer_is_channel(peer_) and peer_.channel.supergroup)):
-        if entities and text:
-            mentioned_user_ids = await _extract_mentions_from_message(
-                entities, text, author.id if isinstance(author, User) else author,
-            )
-
-        if reply_to:
-            mentioned_user_ids.add(reply_to.content.author_id)
-
     schedule = False
     real_opposite = opposite
     # TODO: handle scheduled_date=0x7FFFFFFE
@@ -240,6 +233,17 @@ async def send_message_internal(
         message_kwargs["scheduled_date"] = datetime.fromtimestamp(scheduled_date, UTC)
         message_kwargs["type"] = MessageType.SCHEDULED
         message_kwargs["scheduled_by_user_id"] = author.id if isinstance(author, User) else author
+
+    mentioned_user_ids = set()
+
+    if opposite and (peer_is_chat(peer_) or (peer_is_channel(peer_) and peer_.channel.supergroup)):
+        if entities and text:
+            mentioned_user_ids = await _extract_mentions_from_message(
+                entities, text, author.id if isinstance(author, User) else author,
+            )
+
+        if reply_to:
+            mentioned_user_ids.add(reply_to.content.author_id)
 
     ttl_not_in_kwargs = "ttl_period_days" not in message_kwargs
     if ttl_not_in_kwargs and peer.type is PeerType.USER and peer.user_ttl_period_days:
@@ -280,19 +284,15 @@ async def send_message_internal(
         ).update(replies_version=F("replies_version") + 1)
 
     if schedule:
+        scheduled_at = datetime.fromtimestamp(cast(int, scheduled_date), UTC)
         message = messages[0]
-
-        mentioned_users = None
-        if mentioned_user_ids:
-            ids = array("q", mentioned_user_ids)
-            mentioned_users = LongVector.write(ids)[8:]
-
-        await TaskIqScheduledMessage.create(
-            scheduled_time=scheduled_date,
-            state_updated_at=int(time()),
+        await ScheduledTask.create(
+            type=ScheduledTaskType.SEND_MESSAGE,
+            state=ScheduledTaskState.SCHEDULED,
+            scheduled_at=scheduled_at,
+            next_attempt_at=scheduled_at,
             message=message,
-            mentioned_users=mentioned_users,
-            opposite=real_opposite,
+            extra_info=b"\x01" if real_opposite else None,
         )
 
         return await upd.new_scheduled_message(user.id, message)
@@ -763,7 +763,10 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         "message", "entities", "media_id", "edit_date", "edit_hide", "reply_markup", "scheduled_date", "version",
     ])
     if editing_schedule_date:
-        await TaskIqScheduledMessage.filter(message=message).update(scheduled_time=request.schedule_date)
+        scheduled_at = datetime.fromtimestamp(cast(int, request.schedule_date), UTC)
+        await ScheduledTask.filter(
+            message=message, state=ScheduledTaskState.SCHEDULED
+        ).update(scheduled_at=scheduled_at, next_attempt_at=scheduled_at)
 
     if peer.type is PeerType.SELF:
         peers_q = Q(peer_id=peer.id)

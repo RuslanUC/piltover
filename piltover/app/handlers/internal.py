@@ -1,5 +1,4 @@
-from collections import defaultdict
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 from typing import cast
 
 from loguru import logger
@@ -7,17 +6,18 @@ from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers import bots
-from piltover.app.handlers.messages.sending import send_created_messages_internal, _resolve_noforwards
+from piltover.app.handlers.messages.sending import send_created_messages_internal, _resolve_noforwards, \
+    _extract_mentions_from_message
 from piltover.config import SYSTEM_CONFIG
-from piltover.db.enums import PeerType
-from piltover.db.models import Peer, MessageRef, MessageContent, User, Presence, MessageDraft, Channel, \
-    TaskIqScheduledMessage, TelegramUser
-from piltover.db.models.peer import peer_is_owned_min, peer_is_channel
+from piltover.db.enums import PeerType, ScheduledTaskType, ScheduledTaskState
+from piltover.db.models import Peer, MessageRef, User, Presence, MessageDraft, TelegramUser
+from piltover.db.models.peer import peer_is_owned_min, peer_is_channel, peer_is_chat
+from piltover.db.models.scheduled_task import ScheduledTask
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import Unreachable
 from piltover.tl import TLObject
-from piltover.tl.functions.internal import SendScheduledMessage, DeleteScheduledMessage, CreateDiscussionThread, \
-    ProcessMessageToBuiltinBot, UpdateStatusForPeers, ClearDraft, SendTelegramMessage
+from piltover.tl.functions.internal import SendScheduledMessage, CreateDiscussionThread, \
+    ProcessMessageToBuiltinBot, UpdateStatusForPeers, ClearDraft, SendTelegramMessage, ScheduledDeleteMessage
 from piltover.tl.types.internal import TaggedBool
 from piltover.worker import MessageHandler
 
@@ -34,68 +34,85 @@ handler = MessageHandler("internal")
 
 @handler.on_request(SendScheduledMessage, ReqHandlerFlags.INTERNAL)
 async def send_scheduled_message(request: SendScheduledMessage) -> TLObject:
-    logger.trace("Processing scheduled message {message_id}", message_id=request.message_id)
+    logger.trace("Processing scheduled message task {task_id}", task_id=request.task_id)
 
     async with in_transaction():
-        scheduled = await MessageRef.select_for_update(
-            skip_locked=True, no_key=True,
-        ).get_or_none(
-            id=request.message_id,
+        task = await ScheduledTask.select_for_update(skip_locked=True, no_key=True).get_or_none(
+            id=request.task_id,
+            generation=request.generation,
+            type=ScheduledTaskType.SEND_MESSAGE,
+            state=ScheduledTaskState.DISPATCHING,
         ).select_related(
-            "taskiqscheduledmessages", "peer", "peer__user", "content", "content__author",
-            "content__media", "reply_to", "content__fwd_header", "content__post_info", "content__send_as_channel",
+            "message", "message__peer", "message__peer__user", "message__content", "message__content__author",
+            "message__content__media", "message__reply_to", "message__reply_to__content",
+            "message__content__fwd_header", "message__content__post_info", "message__content__send_as_channel",
+            "message__peer__channel",
         )
-        if scheduled is None:
-            logger.warning(f"Scheduled message {request.message_id} does not exist?")
+
+        if task is None:
+            logger.warning(f"Scheduled message task {request.task_id} does not exist?")
             return TaggedBool(value=False)
 
-        task = cast(TaskIqScheduledMessage, scheduled.taskiqscheduledmessages)
+        task.next_attempt_at += timedelta(minutes=5)
+        task.state = ScheduledTaskState.EXECUTING
+        await task.save(update_fields=["next_attempt_at", "state"])
 
-        messages = await scheduled.send_scheduled(task.opposite)
+        is_opposite = task.extra_info == b"\x01"
+
+        scheduled = cast(MessageRef, task.message)
+        content = scheduled.content
+        peer = peer_ = scheduled.peer
+
+        mentioned_users_set = set()
+        if is_opposite and (peer_is_chat(peer_) or (peer_is_channel(peer_) and peer_.channel.supergroup)):
+            if content.entities and content.message:
+                mentioned_user_ids = await _extract_mentions_from_message(
+                    content.entities, content.message, content.author_id,
+                )
+
+            if scheduled.reply_to and scheduled.reply_to.content.author_id != content.author_id:
+                mentioned_user_ids.add(scheduled.content.author_id)
+
+        messages = await scheduled.send_scheduled(is_opposite)
         await scheduled.delete()
 
     scheduled_by_user_id = cast(int, scheduled.scheduled_by_user_id)
+    new_message = messages[0]
 
     await send_created_messages_internal(
-        messages, task.opposite, scheduled.peer, scheduled_by_user_id, False, False, task.mentioned_users_set,
+        messages, is_opposite, peer, scheduled_by_user_id, False, False, mentioned_users_set,
     )
-
-    peer = scheduled.peer
-    new_message = messages[0]
 
     await upd.delete_scheduled_messages(scheduled_by_user_id, peer, [scheduled.id], [new_message.id])
 
     return TaggedBool(value=True)
 
 
-@handler.on_request(DeleteScheduledMessage, ReqHandlerFlags.INTERNAL)
-async def delete_scheduled_message(request: DeleteScheduledMessage) -> TLObject:
-    logger.trace("Deleting scheduled-for-deletion message {message_id}", message_id=request.message_id)
+@handler.on_request(ScheduledDeleteMessage, ReqHandlerFlags.INTERNAL)
+async def delete_scheduled_message(request: ScheduledDeleteMessage) -> TLObject:
+    logger.trace("Deleting scheduled-for-deletion message with task {task_id}", task_id=request.task_id)
 
     async with in_transaction():
-        to_delete = await MessageRef.select_for_update(
-            skip_locked=True, no_key=True,
-        ).filter(content_id=request.message_id).select_related("peer", "peer__channel")
+        task = await ScheduledTask.select_for_update(skip_locked=True, no_key=True).get_or_none(
+            id=request.task_id,
+            generation=request.generation,
+            type=ScheduledTaskType.DELETE_MESSAGE,
+            state=ScheduledTaskState.DISPATCHING,
+        ).select_related("message", "message__peer", "message__peer__channel")
 
-        all_ids = []
-        regular_messages: dict[int, list[int]] = defaultdict(list)
-        channel_messages: dict[Channel, list[int]] = defaultdict(list)
+        if task is None:
+            logger.warning(f"Scheduled message deletion task {request.task_id} does not exist?")
+            return TaggedBool(value=False)
 
-        for message in to_delete:
-            all_ids.append(message.id)
-            if peer_is_channel(message.peer):
-                channel_messages[message.peer.channel].append(message.id)
-            elif peer_is_owned_min(message.peer):
-                regular_messages[message.peer.owner_id].append(message.id)
-            else:
-                raise Unreachable
+        message = cast(MessageRef, task.message)
+        await MessageRef.filter(id=message.id).delete()
 
-        await MessageContent.filter(id=request.message_id).delete()
-
-        if regular_messages:
-            await upd.delete_messages(None, regular_messages)
-        for channel, message_ids in channel_messages.items():
-            await upd.delete_messages_channel(channel, message_ids)
+    if peer_is_channel(message.peer):
+        await upd.delete_messages_channel(message.peer.channel, [message.id])
+    elif peer_is_owned_min(message.peer):
+        await upd.delete_messages(None, {message.peer.owner_id: [message.id]})
+    else:
+        raise Unreachable
 
     return TaggedBool(value=True)
 

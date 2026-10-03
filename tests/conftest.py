@@ -133,8 +133,7 @@ async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config
             create_peer_colors=create_peer_colors, create_languages=create_languages,
             create_system_stickersets=create_system_stickersets, create_emoji_groups=create_emoji_groups,
             run_scheduler=run_scheduler, run_actual_server=USE_REAL_TCP_FOR_TESTING,
-            create_sys_user=not dont_create_sys_user, scheduler_update_interval=1,
-            scheduler_loop_interval=1,
+            create_sys_user=not dont_create_sys_user,
         ))
 
         test_server, server_host, server_port = server_info

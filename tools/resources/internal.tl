@@ -239,6 +239,10 @@ internal.notify_internal_push#c2a6f588 = internal.MessageToGateway;
 internal.channel_subscribe#e12ba9b0 channel_id:long = internal.MessageToGateway;
 internal.channel_unsubscribe#9516b4e1 channel_id:long = internal.MessageToGateway;
 
+// ...
+
+internal.scheduled_message_info flags:# opposite:flags.0?true mentioned_user_ids:
+
 ---functions---
 
 // For my.telegram.org alternative page
@@ -257,8 +261,8 @@ internal.get_available_servers#a2ed5af3 auth:bytes = internal.AvailableServers;
 internal.call_rpc#ead5e531 flags:# is_bot:flags.6?true mfa_pending:flags.7?true auth_key_id:flags.1?long perm_auth_key_id:flags.0?long session_id:flags.2?long message_id:flags.3?long auth_id:flags.4?long user_id:flags.5?long layer:int obj:Object = internal.RpcResponse;
 internal.call_rpc_internal#e876b427 flags:# as_user:flags.0?long as_auth_id:flags.1?long obj:Object = Object;
 
-internal.send_scheduled_message#babeae6e message_id:long = Bool;
-internal.delete_scheduled_message#acd1c8f0 message_id:long = Bool;
+internal.send_scheduled_message#babeae6e task_id:long generation:int = Bool;
+internal.scheduled_delete_message#acd1c8f0 task_id:long generation:int = Bool;
 internal.create_discussion_thread#6bdac34b message_id:long = Bool;
 internal.process_message_to_builtin_bot#820fd380 messageref_id:long = Bool;
 internal.update_status_for_peers#ed609074 peer_type:int peer_owner:long peer_user:long peer_chat:long = Bool;

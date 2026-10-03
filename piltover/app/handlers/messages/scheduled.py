@@ -6,7 +6,8 @@ from tortoise.transactions import in_transaction
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages import sending
 from piltover.app.utils.utils import telegram_hash
-from piltover.db.models import Peer, MessageRef, MessageContent, TaskIqScheduledMessage
+from piltover.db.enums import ScheduledTaskType, ScheduledTaskState
+from piltover.db.models import Peer, MessageRef, MessageContent, ScheduledTask, peer_is_chat, peer_is_channel
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import Updates
 from piltover.tl.functions.messages import GetScheduledHistory, GetScheduledMessages, SendScheduledMessages, \
@@ -73,21 +74,38 @@ async def send_scheduled_messages(request: SendScheduledMessages, user_id: int) 
     new = []
 
     async with in_transaction():
-        # TODO: filter by scheduled_by_user_id?
-        scheduled_messages = await MessageRef.select_for_update(
-            skip_locked=True, no_key=True,
-        ).filter(
-            peer=peer, id__in=request.id[:100],
+        tasks = await ScheduledTask.select_for_update(skip_locked=True, no_key=True).filter(
+            message_id__in=request.id[:100],
+            type=ScheduledTaskType.SEND_MESSAGE,
+            state=ScheduledTaskState.SCHEDULED,
         ).select_related(
-            "taskiqscheduledmessages", "peer", "peer__user", "content", "content__author",
-            "content__media", "content__reply_to", "content__fwd_header", "content__post_info",
+            "message", "message__peer", "message__peer__user", "message__content", "message__content__author",
+            "message__content__media", "message__reply_to", "message__reply_to__content",
+            "message__content__fwd_header", "message__content__post_info", "message__content__send_as_channel",
+            "message__peer__channel",
         )
 
-        for scheduled in scheduled_messages:
-            task = cast(TaskIqScheduledMessage, scheduled.taskiqscheduledmessages)
-            messages = await scheduled.send_scheduled(task.opposite)
+        # TODO: do in bulk
+
+        for task in tasks:
+            scheduled = cast(MessageRef, task.message)
+            content = scheduled.content
+            peer_ = scheduled.peer
+            is_opposite = task.extra_info == b"\x01"
+
+            mentioned_users_set = set()
+            if is_opposite and (peer_is_chat(peer_) or (peer_is_channel(peer_) and peer_.channel.supergroup)):
+                if content.entities and content.message:
+                    mentioned_user_ids = await sending._extract_mentions_from_message(
+                        content.entities, content.message, content.author_id,
+                    )
+
+                if scheduled.reply_to and scheduled.reply_to.content.author_id != content.author_id:
+                    mentioned_user_ids.add(scheduled.content.author_id)
+
+            messages = await scheduled.send_scheduled(is_opposite)
             msg_updates = await sending.send_created_messages_internal(
-                messages, task.opposite, scheduled.peer, user_id, False, False, task.mentioned_users_set,
+                messages, is_opposite, scheduled.peer, user_id, False, False, mentioned_users_set,
             )
             await scheduled.content.delete()
 
