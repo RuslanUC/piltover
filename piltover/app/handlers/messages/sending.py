@@ -75,7 +75,7 @@ async def _extract_mentions_from_message(entities: list[dict], text: str, author
         return set()
 
     if mentioned_usernames:
-        mentioned_user_ids.extend(
+        mentioned_user_ids.update(
             cast(
                 list[int],
                 await User.filter(username__username__in=list(mentioned_usernames)).values_list("id", flat=True),
