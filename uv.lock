@@ -1795,6 +1795,7 @@ dependencies = [
     { name = "python-magic" },
     { name = "tgcrypto" },
     { name = "tortoise-orm", extra = ["accel", "asyncmy"] },
+    { name = "typing-extensions" },
     { name = "uvloop", marker = "sys_platform != 'win32'" },
 ]
 
@@ -1851,6 +1852,7 @@ requires-dist = [
     { name = "python-magic", specifier = ">=0.4.27,<1.0.0" },
     { name = "tgcrypto", specifier = ">=1.2.5,<2.0.0" },
     { name = "tortoise-orm", extras = ["accel", "asyncmy"], git = "https://github.com/tortoise/tortoise-orm.git?rev=ff7ef94ee72bdc7fe5002df2858f1c7e3d6b2f3d" },
+    { name = "typing-extensions", specifier = ">=4.16.0,<5.0.0" },
     { name = "uvloop", marker = "sys_platform != 'win32'", specifier = ">=0.22.1,<1.0.0" },
 ]
 provides-extras = ["telegram-integration"]

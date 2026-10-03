@@ -3,8 +3,12 @@ from __future__ import annotations
 import asyncio
 import random
 from collections.abc import Callable, Awaitable
-from typing import override
 from uuid import uuid4
+
+try:
+    from typing import override
+except ImportError:
+    from typing_extensions import override
 
 from .base import BaseSubscription, BaseMessage, BaseMessaging
 from ..exceptions import Unreachable

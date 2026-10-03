@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import functools
 from collections.abc import Callable, Awaitable
-from typing import override
+
+try:
+    from typing import override
+except ImportError:
+    from typing_extensions import override
 
 from nats import NATS
 from nats.aio.msg import Msg
