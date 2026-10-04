@@ -23,17 +23,18 @@ from piltover.exceptions import Disconnection, InvalidConstructorException, Unre
 from piltover.gateway._keygen_handlers import KEYGEN_HANDLERS
 from piltover.gateway._system_handlers import SYSTEM_HANDLERS
 from piltover.session import Session, SessionManager
-from piltover.tl import NewSessionCreated, Long, Int, RpcError, ReqPq, ReqPqMulti, MsgsAck
-from piltover.tl.core_types import TLObject, MsgContainer, Message, RpcResult
+from piltover.tl import NewSessionCreated, Long, Int, RpcError, ReqPq, ReqPqMulti, MsgsAck, Pong, DestroySessionOk
+from piltover.tl.core_types import TLObject, MsgContainer, Message, RpcResult, FutureSalts
 from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.tl.functions.internal import CallRpc
 from piltover.tl.types.internal import RpcResponse
 from piltover.utils.debug import measure_time
-from ..db.models import AuthKey
+from piltover.db.models import AuthKey
 
 if TYPE_CHECKING:
     from .server import Gateway
 
+RawResponseType = RpcResult | Pong | DestroySessionOk | FutureSalts
 
 _check_req_pq_tlid = (
     Int.write(ReqPq.tlid(), False),
@@ -58,7 +59,7 @@ class Client:
         self.gen_auth_data: GenAuthData | None = None
         self.empty_session = Session(0, AuthData(0, b"", 0))
 
-        self.disconnect_timeout: asyncio.Timeout | None = None
+        self.disconnect_timeout = asyncio.timeout(None)
         self.write_lock = asyncio.Lock()
 
         self.active_sessions = LRU(4, callback=self._session_evicted)
@@ -154,7 +155,7 @@ class Client:
             obj.write(),
         ))
 
-    async def _kiq(self, obj: TLObject, session: Session, message_id: int | None = None) -> AsyncTaskiqTask:
+    async def _kiq(self, obj: TLObject, session: Session, message_id: int | None = None) -> AsyncTaskiqTask[str]:
         # TODO: dont do .write.hex(), RpcResponse somehow doesn't need encoding it manually, check how exactly
         call_rpc = CallRpc(
             obj=obj,
@@ -170,7 +171,8 @@ class Client:
         ).write().hex()
 
         with measure_time(".kiq()"):
-            return await AsyncKicker(task_name="handle_tl_rpc", broker=self.server.broker, labels={}).kiq(call_rpc)
+            kicker = AsyncKicker[[str], str](task_name="handle_tl_rpc", broker=self.server.broker, labels={})
+            return await kicker.kiq(call_rpc)
 
     async def handle_unencrypted_message(self, obj: TLObject) -> None:
         # TODO: move it to worker (and add db models to save auth key generation state)
@@ -350,14 +352,11 @@ class Client:
     async def worker(self):
         logger.debug("Client connected: {addr}", addr=self.peername)
 
-        loop = asyncio.get_running_loop()
-        self.disconnect_timeout = asyncio.timeout(None)
-
         done, pending = await asyncio.wait(
             [
-                loop.create_task(self._timer_task()),
-                loop.create_task(self._worker_loop_recv()),
-                loop.create_task(self._worker_loop_send()),
+                self.loop.create_task(self._timer_task()),
+                self.loop.create_task(self._worker_loop_recv()),
+                self.loop.create_task(self._worker_loop_send()),
             ],
             return_when=asyncio.FIRST_COMPLETED,
         )
@@ -413,7 +412,7 @@ class Client:
                 taskiq_time=result.execution_time if result else None,
             )
 
-    async def _process_request(self, request: Message, session: Session) -> RpcResult | None:
+    async def _process_request(self, request: Message, session: Session) -> RawResponseType | None:
         if request.obj.tlid() in SYSTEM_HANDLERS:
             return await SYSTEM_HANDLERS[request.obj.tlid()](self, request, session)
 
@@ -457,7 +456,7 @@ class Client:
             await session.refresh_auth_maybe(True)
             await session.fetch_layer()
 
-        return result.obj
+        return cast(RpcResult, result.obj)
 
     async def propagate(self, request: Message, session: Session) -> RpcResult | None:
         if (result := await self._process_request(request, session)) is not None:

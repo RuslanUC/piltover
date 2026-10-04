@@ -16,6 +16,7 @@ from piltover.tl.core_types import Message, RpcResult, FutureSalts
 
 if TYPE_CHECKING:
     from piltover.gateway import Client
+    from piltover.gateway.client import RawResponseType
     from piltover.session import Session
 
 
@@ -34,7 +35,7 @@ async def ping_delay_disconnect(client: Client, request: Message[PingDelayDiscon
     return Pong(msg_id=request.message_id, ping_id=request.obj.ping_id)
 
 
-async def _invoke_inner_query(client: Client, request: Message, session: Session) -> RpcResult:
+async def _invoke_inner_query(client: Client, request: Message, session: Session) -> RpcResult | None:
     return await client.propagate(
         Message(
             obj=request.obj.query,
@@ -45,15 +46,15 @@ async def _invoke_inner_query(client: Client, request: Message, session: Session
     )
 
 
-async def invoke_with_layer(client: Client, request: Message[InvokeWithLayer], session: Session) -> RpcResult:
-    if request.obj.layer > session.layer:
+async def invoke_with_layer(client: Client, request: Message[InvokeWithLayer], session: Session) -> RpcResult | None:
+    if request.obj.layer > session.layer and session.auth_data.perm_auth_key_id is not None:
         logger.trace(f"saving layer for key {session.auth_data.perm_auth_key_id}")
         await AuthKey.filter(id=session.auth_data.perm_auth_key_id).update(layer=request.obj.layer)
     session.layer = request.obj.layer
     return await _invoke_inner_query(client, request, session)
 
 
-async def invoke_after_msg(client: Client, request: Message[InvokeAfterMsg], session: Session) -> RpcResult:
+async def invoke_after_msg(client: Client, request: Message[InvokeAfterMsg], session: Session) -> RpcResult | None:
     logger.critical(
         "Client wants to execute request after other request would be executed, "
         "but this is not implemented yet: {request}",
@@ -62,12 +63,14 @@ async def invoke_after_msg(client: Client, request: Message[InvokeAfterMsg], ses
     return await _invoke_inner_query(client, request, session)
 
 
-async def invoke_without_updates(client: Client, request: Message[InvokeWithoutUpdates], session: Session) -> RpcResult:
+async def invoke_without_updates(
+        client: Client, request: Message[InvokeWithoutUpdates], session: Session,
+) -> RpcResult | None:
     session.no_updates = True
     return await _invoke_inner_query(client, request, session)
 
 
-async def init_connection(client: Client, request: Message[InitConnection], session: Session) -> RpcResult:
+async def init_connection(client: Client, request: Message[InitConnection], session: Session) -> RpcResult | None:
     # hmm yes yes, I trust you client
     # the api id is always correct, it has always been!
 
@@ -116,7 +119,7 @@ async def get_future_salts(client: Client, request: Message[GetFutureSalts], ses
     )
 
 
-SYSTEM_HANDLERS: dict[int, Callable[[Client, Message, Session], Awaitable[RpcResult | Pong | None]]] = {
+SYSTEM_HANDLERS: dict[int, Callable[[Client, Message, Session], Awaitable[RawResponseType | None]]] = {
     MsgsAck.tlid(): msgs_ack,
     Ping.tlid(): ping,
     PingDelayDisconnect.tlid(): ping_delay_disconnect,
