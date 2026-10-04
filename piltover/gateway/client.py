@@ -56,7 +56,7 @@ class Client:
         self.peername: tuple[str, int] = writer.get_extra_info("peername")
 
         self.gen_auth_data: GenAuthData | None = None
-        self.empty_session = Session(0)
+        self.empty_session = Session(0, AuthData(0, b"", 0))
 
         self.disconnect_timeout: asyncio.Timeout | None = None
         self.write_lock = asyncio.Lock()
@@ -128,7 +128,7 @@ class Client:
     async def _write_message(
             self, message_id: int, seq_no: int, data: bytes, session: Session,
     ) -> None:
-        if not session.auth_data or session.auth_data.auth_key is None:
+        if session.auth_data.auth_key is None:
             raise Unreachable("Trying to send encrypted response, but auth_key is empty")
 
         logger.debug(f"Sending message {message_id} to {session.session_id}")

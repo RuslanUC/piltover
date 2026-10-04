@@ -53,7 +53,7 @@ class Session:
         "out_seq_no", "message_queue", "message_available", "is_internal_push", "had_init_connection",
     )
 
-    def __init__(self, session_id: int, client: Client | None = None, auth_data: AuthData | None = None) -> None:
+    def __init__(self, session_id: int, auth_data: AuthData, client: Client | None = None) -> None:
         self.client = client
         self.session_id = session_id
         self.auth_data = auth_data
@@ -86,8 +86,7 @@ class Session:
         # TODO: store whole session in redis or something
 
     def uniq_id(self) -> tuple[int, int]:
-        key_id = 0 if self.auth_data is None or self.auth_data.auth_key_id is None else self.auth_data.auth_key_id
-        return key_id, self.session_id
+        return self.auth_data.auth_key_id, self.session_id
 
     def __hash__(self) -> int:
         return hash(self.uniq_id)
@@ -98,7 +97,7 @@ class Session:
         self.client = client
         self.message_available = client.message_available
         if not self.message_queue.empty():
-            self.message_available.set()
+            client.message_available.set()
         piltover.session.SessionManager.broker.subscribe(self)
 
     # TODO: rewrite
@@ -191,28 +190,26 @@ class Session:
             obj.seq = 0
             obj.qts = 0
 
-    @staticmethod
-    def make_salt(salt_key: bytes, auth_key_id: int, timestamp: int) -> bytes:
-        return hmac.new(salt_key, Long.write(auth_key_id) + Int.write(timestamp), hashlib.sha1).digest()[:8]
+    def make_salt(self, salt_key: bytes, timestamp: int) -> bytes:
+        return hmac.new(
+            salt_key, Long.write(self.auth_data.auth_key_id) + Int.write(timestamp),
+            hashlib.sha1,
+        ).digest()[:8]
 
     # TODO: store salt_key in session?
     def update_salts_maybe(self, salt_key: bytes, force: bool = False) -> None:
-        if self.auth_data is None or self.auth_data.auth_key_id is None:
-            self.salt_now = self.salt_prev = (b"\x00" * 8, 0)
-            return
-
         now = int(time() // (30 * 60))
         if self.salt_now.valid_at == now and not force:
             return
 
-        self.salt_now.salt = self.make_salt(salt_key, self.auth_data.auth_key_id, now)
+        self.salt_now.salt = self.make_salt(salt_key, now)
         self.salt_now.valid_at = now
 
-        self.salt_prev.salt = self.make_salt(salt_key, self.auth_data.auth_key_id, now - 1)
+        self.salt_prev.salt = self.make_salt(salt_key, now - 1)
         self.salt_now.valid_at = now - 1
 
     async def fetch_layer(self) -> None:
-        if self.auth_data is None or self.auth_data.perm_auth_key_id is None:
+        if self.auth_data.perm_auth_key_id is None:
             return
 
         perm_key_layer = cast(
@@ -234,19 +231,16 @@ class Session:
         self.channel_ids.clear()
 
     async def refresh_auth_maybe(self, force_refresh_auth: bool = False) -> None:
-        if self.auth_data is None:
-            return
-
-        if force_refresh_auth and self.auth_data.auth_key_id is not None:
+        if force_refresh_auth:
+            # TODO: if AuthKey.get_auth_data is None - remove the session
             self.auth_data = await AuthKey.get_auth_data(self.auth_data.auth_key_id)
 
-        auth_key_id = self.auth_data.auth_key_id
         perm_auth_key_id = self.auth_data.perm_auth_key_id
 
         old_user_id = self.user_id
         old_auth_id = self.auth_id
 
-        if auth_key_id is None or perm_auth_key_id is None:
+        if perm_auth_key_id is None:
             self._reset_auth()
             return
 

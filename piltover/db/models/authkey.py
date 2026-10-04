@@ -35,6 +35,7 @@ class AuthKey(Model):
         ).only("id", "auth_key", "perm_key_id")
         if temp_key is None:
             return None
+
         return AuthData(
             auth_key_id=temp_key.id,
             auth_key=temp_key.auth_key,

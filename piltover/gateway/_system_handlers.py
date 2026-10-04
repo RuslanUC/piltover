@@ -109,9 +109,7 @@ async def get_future_salts(client: Client, request: Message[GetFutureSalts], ses
             FutureSalt(
                 valid_since=(base_timestamp + salt_offset) * 30 * 60,
                 valid_until=(base_timestamp + salt_offset + 1) * 30 * 60,
-                salt=Long.read_bytes(session.make_salt(
-                    client.server.salt_key, session.auth_data.auth_key_id, base_timestamp + salt_offset,
-                )),
+                salt=Long.read_bytes(session.make_salt(client.server.salt_key, base_timestamp + salt_offset)),
             )
             for salt_offset in range(limit)
         ]
