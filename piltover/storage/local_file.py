@@ -76,7 +76,7 @@ class LocalFileStorage(BaseStorage):
             file_name += f"-{suffix}"
 
         if is_last:
-            file_name += f".last"
+            file_name += ".last"
 
         file_path = self._uploading_big_dir / file_name
         file_path.touch(exist_ok=True)
