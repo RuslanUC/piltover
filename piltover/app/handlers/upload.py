@@ -146,7 +146,7 @@ async def save_big_file_part(request: SaveBigFilePart, user_id: int) -> bool:
 
     storage = request_ctx.get().storage
     with measure_time("storage.save_part(...)"):
-        await storage.save_big_part(file.physical_id, request.file_part, request.bytes_, is_last)
+        await storage.save_big_part(file.physical_id, request.file_part, request.bytes_, file.part_size, is_last)
 
     return True
 

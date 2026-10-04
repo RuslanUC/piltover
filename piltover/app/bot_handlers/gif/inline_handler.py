@@ -22,6 +22,8 @@ from piltover.utils.utils import run_coro_with_additional_return
 _KLIPY_SEARCH = "https://api.klipy.com/v2/search"
 _KLIPY_FEATURED = "https://api.klipy.com/v2/featured"
 
+CHUNK_SIZE = 1024 * 1024
+
 
 def _get_api_endpoint(provider: Literal["klipy"], search: bool) -> str | None:
     if provider == "klipy":
@@ -55,8 +57,8 @@ async def _get_or_download_gif(
     size = 0
 
     async with client.stream("GET", url) as resp:
-        async for chunk in resp.aiter_bytes(1024 * 1024):
-            await storage.save_big_part(physical_id, part_id, chunk, False)
+        async for chunk in resp.aiter_bytes(CHUNK_SIZE):
+            await storage.save_big_part(physical_id, part_id, chunk, CHUNK_SIZE, False)
             part_id += 1
             size += len(chunk)
 
@@ -73,7 +75,7 @@ async def _get_or_download_gif(
         duration=duration,
     )
 
-    await storage.finalize_big_upload_as(physical_id, StorageType.DOCUMENT, part_id)
+    await storage.finalize_big_upload_as(physical_id, StorageType.DOCUMENT, part_id, CHUNK_SIZE)
 
     from piltover.app.utils.utils import extract_video_metadata
 

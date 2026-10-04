@@ -5,6 +5,8 @@ from tortoise import fields
 from piltover.db import models
 from piltover.db.models import UploadingFileBase
 from piltover.exceptions import ErrorRpc
+from piltover.storage import BaseStorage
+from piltover.storage.base import StorageType
 
 
 class UploadingFileBig(UploadingFileBase):
@@ -27,3 +29,6 @@ class UploadingFileBig(UploadingFileBase):
             elif not parts:
                 reason = f"not {parts}"
             raise ErrorRpc(error_code=400, error_message="FILE_PARTS_INVALID", reason=reason)
+
+    async def _finalize(self, storage: BaseStorage, storage_type: StorageType, parts_num: int) -> None:
+        await storage.finalize_big_upload_as(self.physical_id, storage_type, parts_num, self.part_size)

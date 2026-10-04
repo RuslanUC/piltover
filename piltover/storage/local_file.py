@@ -66,22 +66,27 @@ class LocalFileStorage(BaseStorage):
         self._uploading_big_dir.mkdir(parents=True, exist_ok=True)
 
     async def save_big_part(
-            self, file_id: UUID, part_id: int, data: StorageBuffer, is_last: bool, suffix: str | None = None,
+            self, file_id: UUID, part_id: int, data: StorageBuffer, part_size: int, is_last: bool,
+            suffix: str | None = None,
     ) -> None:
-        # TODO: rewrite, write into one file instead of different parts
+        # TODO: create file lock for each part_id?
+
         file_name = str(file_id)
         if suffix is not None:
             file_name += f"-{suffix}"
 
-        if part_id > 0:
-            file_name += f".part{part_id}"
+        if is_last:
+            file_name += f".last"
 
         file_path = self._uploading_big_dir / file_name
         file_path.touch(exist_ok=True)
 
         async with aiofiles.open(file_path, "r+b") as f:
+            if not is_last:
+                await f.seek(part_id * part_size)
             await f.write(data)
-            await f.truncate(len(data))
+            if is_last:
+                await f.truncate(len(data))
 
     async def save_small_part(
             self, file_id: UUID, part_id: int, data: StorageBuffer, suffix: str | None = None,
@@ -101,9 +106,8 @@ class LocalFileStorage(BaseStorage):
             await f.truncate(len(data))
 
     async def finalize_big_upload_as(
-            self, file_id: UUID, as_: StorageType, parts_num: int, suffix: str | None = None,
+            self, file_id: UUID, as_: StorageType, parts_num: int, part_size: int, suffix: str | None = None,
     ) -> None:
-        # TODO: rewrite
         file_name = str(file_id)
         if suffix is not None:
             file_name += f"-{suffix}"
@@ -114,16 +118,22 @@ class LocalFileStorage(BaseStorage):
 
         await aiofiles.os.rename(src_path, dst_path)
 
-        if parts_num <= 1:
-            return
+        truncate_to_size = part_size * parts_num
 
         async with aiofiles.open(dst_path, "r+b") as f_out:
             await f_out.seek(0, os.SEEK_END)
-            for part_id in range(1, parts_num):
-                append_filename = self._uploading_big_dir / f"{file_name}.part{part_id}"
-                async with aiofiles.open(append_filename, "rb") as f_in:
+            size = await f_out.tell()
+            if size > truncate_to_size:
+                await f_out.truncate(truncate_to_size)
+                return
+            elif size == truncate_to_size:
+                return
+
+            last_part_path = self._uploading_big_dir / f"{file_name}.last"
+            if last_part_path.exists():
+                async with aiofiles.open(last_part_path, "rb") as f_in:
                     await f_out.write(await f_in.read())
-                await aiofiles.os.remove(append_filename)
+                await aiofiles.os.remove(last_part_path)
 
     async def finalize_small_upload_as(
             self, file_id: UUID, as_: StorageType, parts_num: int, suffix: str | None = None,

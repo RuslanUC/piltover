@@ -47,14 +47,17 @@ class UploadingFileBase(Model):
         if isinstance(self, models.UploadingFileBig):
             self.check_parts_count(parts)
 
-        if parts_num is not None and parts_num != len(parts):
-            raise ErrorRpc(error_code=400, error_message="FILE_PARTS_INVALID", reason=f"{parts_num} != len({parts})")
+        parts_num_ = len(parts) if parts_num is None else parts_num
+
+        # TODO: allow parts_num be less than len(parts)
+        if parts_num_ != len(parts):
+            raise ErrorRpc(error_code=400, error_message="FILE_PARTS_INVALID", reason=f"{parts_num_} != len({parts})")
 
         if parts[0].part_id != 0:
             raise ErrorRpc(error_code=400, error_message="FILE_PART_0_MISSING")
 
         size = parts[0].size
-        for idx in range(1, len(parts)):
+        for idx in range(1, parts_num_):
             part = parts[idx]
             if part.part_id - 1 != parts[idx - 1].part_id:
                 raise ErrorRpc(error_code=400, error_message=f"FILE_PART_{part.part_id - 1}_MISSING")
@@ -77,11 +80,7 @@ class UploadingFileBase(Model):
             component = storage.documents
 
         with measure_time("storage.finalize_*_upload_as"):
-            if self.IS_SMALL:
-                # TODO: check md5
-                await storage.finalize_small_upload_as(self.physical_id, finalize_as, len(parts))
-            else:
-                await storage.finalize_big_upload_as(self.physical_id, finalize_as, len(parts))
+            await self._finalize(storage, finalize_as, parts_num_)
 
         if not force_fallback_mime and self.mime is not None and self.mime.startswith("video/"):
             from piltover.app.utils.utils import extract_video_metadata
@@ -99,3 +98,6 @@ class UploadingFileBase(Model):
         await file.save()
 
         return file
+
+    async def _finalize(self, storage: BaseStorage, storage_type: StorageType, parts_num: int) -> None:
+        raise NotImplementedError
