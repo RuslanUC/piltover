@@ -8,6 +8,7 @@ from piltover.db import models
 from piltover.db.enums import ScheduledTaskType, ScheduledTaskState
 
 
+# TODO: indexes
 class ScheduledTask(Model):
     id: int = fields.BigIntField(primary_key=True)
     type: ScheduledTaskType = fields.IntEnumField(ScheduledTaskType, description="")
