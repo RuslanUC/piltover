@@ -116,6 +116,12 @@ class LocalFileStorage(BaseStorage):
         dst_path = self._dir / as_.value / file_name
         logger.trace(f"Finalizing {src_path} as {as_.value}, moving to {dst_path}")
 
+        last_part_path = self._uploading_big_dir / f"{file_name}.last"
+
+        if parts_num == 1:
+            await aiofiles.os.rename(last_part_path, dst_path)
+            return
+
         await aiofiles.os.rename(src_path, dst_path)
 
         truncate_to_size = part_size * parts_num
@@ -129,7 +135,6 @@ class LocalFileStorage(BaseStorage):
             elif size == truncate_to_size:
                 return
 
-            last_part_path = self._uploading_big_dir / f"{file_name}.last"
             if last_part_path.exists():
                 async with aiofiles.open(last_part_path, "rb") as f_in:
                     await f_out.write(await f_in.read())
