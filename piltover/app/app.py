@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import os
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -89,6 +90,10 @@ class PiltoverApp:
 
         self._private_key = privkey.read_text()
         self._public_key = pubkey.read_text()
+
+        if salt_key is None:
+            salt_key = os.urandom(32)
+            logger.info(f"Salt key is None, generating new one: {base64.b64encode(salt_key).decode('latin1')}")
 
         broker = make_broker_from_config()
         message_broker = make_message_broker_from_config(broker)
