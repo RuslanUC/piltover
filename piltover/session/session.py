@@ -15,8 +15,8 @@ import piltover
 from piltover.auth_data import AuthData
 from piltover.cache import Cache
 from piltover.db.enums import PrivacyRuleKeyType
-from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, MessageRef, \
-    Chat, Channel
+from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, \
+    MessageRef, Chat, Channel
 from piltover.exceptions import Unreachable
 from piltover.tl import Updates, Long, Int, BadServerSalt, BadMsgNotification
 from piltover.tl.core_types import TLObject, Message, MsgContainer
@@ -147,9 +147,12 @@ class Session:
             obj = obj.obj
 
         # TODO: use *ToFormat?
-        if isinstance(obj, Updates) and self.auth_id is not None:
+        if isinstance(obj, Updates) and self.auth_id is not None and self.user_id is not None:
             await UserAuthorization.filter(id=self.auth_id).update(upd_seq=F("upd_seq") + 1)
-            upd_seq = await UserAuthorization.get_or_none(id=self.auth_id).values_list("upd_seq", flat=True)
+            upd_seq = cast(
+                int | None,
+                await UserAuthorization.get_or_none(id=self.auth_id).values_list("upd_seq", flat=True),
+            )
             if upd_seq is None:
                 upd_seq = 0
             logger.trace(f"setting seq to {upd_seq} for user {self.user_id}, auth {self.auth_id}")
@@ -175,8 +178,8 @@ class Session:
 
         with measure_time("<serialize message>"):
             ctx = SerializationContext(
-                auth_id=self.auth_id,
-                user_id=self.user_id,
+                auth_id=self.auth_id or 0,
+                user_id=self.user_id or 0,
                 layer=self.layer,
                 values=context_values,
             )
@@ -188,7 +191,6 @@ class Session:
 
         if isinstance(obj, Updates):
             obj.seq = 0
-            obj.qts = 0
 
     def make_salt(self, salt_key: bytes, timestamp: int) -> bytes:
         return hmac.new(
@@ -261,12 +263,15 @@ class Session:
                 self._reset_auth()
                 return
 
-        if self.auth_id is not None and not self.mfa_pending and (time() - self.channels_loaded_at) > 60 * 5:
+        if self.user_id is not None and not self.mfa_pending and (time() - self.channels_loaded_at) > 60 * 5:
             logger.trace("Refreshing channels...")
             self.channels_loaded_at = time()
 
             channel_ids: TaggedLongVector
-            if (channel_ids := await Cache.obj.get(f"channels:{self.user_id}")) is None:
+            cached_channel_ids: TaggedLongVector | None
+            if (cached_channel_ids := await Cache.obj.get(f"channels:{self.user_id}")) is not None:
+                channel_ids = cached_channel_ids
+            else:
                 channel_ids = TaggedLongVector(
                     vec=cast(list[int], await ChatParticipant.filter(
                         channel_id__not_isnull=True, user_id=self.user_id, left=False,
