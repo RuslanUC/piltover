@@ -104,7 +104,7 @@ async def save_big_file_part(request: SaveBigFilePart, user_id: int) -> bool:
 
     async with in_transaction():
         update_fields = {}
-        with measure_time("UploadingFile.get_or_create(...)"):
+        with measure_time("UploadingFileBig.get_or_create"):
             file, created = await UploadingFileBig.get_or_create(
                 user_id=user_id, file_id=request.file_id, defaults=defaults,
             )
@@ -125,27 +125,30 @@ async def save_big_file_part(request: SaveBigFilePart, user_id: int) -> bool:
                 update_fields["total_parts"] = total_parts
                 file.total_parts = total_parts
 
+        if not is_last and (size % 1024 != 0 or 524288 % size != 0):
+            raise ErrorRpc(error_code=400, error_message="FILE_PART_SIZE_INVALID")
+
         if not is_last and file.part_size == 0:
             update_fields["part_size"] = size
             file.part_size = size
         if update_fields:
-            await UploadingFileBig.filter(id=file.id).update(**update_fields)
+            with measure_time("UploadingFileBig.filter.update"):
+                await UploadingFileBig.filter(id=file.id).update(**update_fields)
 
     if not is_last and size != file.part_size:
         raise ErrorRpc(error_code=400, error_message="FILE_PART_SIZE_CHANGED")
-    if not is_last and (size % 1024 != 0 or 524288 % size != 0):
-        raise ErrorRpc(error_code=400, error_message="FILE_PART_SIZE_INVALID")
 
     async with in_transaction():
-        with measure_time("UploadingFilePart.get_or_create"):
+        with measure_time("UploadingFileBigPart.get_or_create"):
             part, created = await UploadingFileBigPart.get_or_create(
                 file=file, part_id=request.file_part, defaults={"size": size},
             )
             if not created and is_last and part.size != size:
-                await UploadingFileBigPart.filter(id=part.id).update(size=size)
+                with measure_time("UploadingFileBigPart.filter.update"):
+                    await UploadingFileBigPart.filter(id=part.id).update(size=size)
 
     storage = request_ctx.get().storage
-    with measure_time("storage.save_part(...)"):
+    with measure_time("storage.save_big_part"):
         await storage.save_big_part(file.physical_id, request.file_part, request.bytes_, file.part_size, is_last)
 
     return True

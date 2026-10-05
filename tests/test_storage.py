@@ -1,7 +1,7 @@
 import hashlib
 import math
 import os
-from collections.abc import Iterable, AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import pytest
 from pyrogram.errors import FilePartSizeChanged, FilePartInvalid
