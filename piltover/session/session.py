@@ -51,6 +51,7 @@ class Session:
         "client", "session_id", "auth_data", "min_msg_id", "user_id", "auth_id", "channel_ids", "auth_loaded_at",
         "channels_loaded_at", "salt_now", "salt_prev", "no_updates", "layer", "is_bot", "mfa_pending", "msg_id_values",
         "out_seq_no", "message_queue", "message_available", "is_internal_push", "had_init_connection",
+        "_msg_ids_seen", "_msg_ids_buckets", "_msg_ids_oldest_ts",
     )
 
     def __init__(self, session_id: int, auth_data: AuthData, client: Client | None = None) -> None:
@@ -81,6 +82,10 @@ class Session:
 
         self.message_queue = Queue()
         self.message_available: Event | None = None
+
+        self._msg_ids_seen: set[int] = set()
+        self._msg_ids_buckets: dict[int, set[int]] = {}
+        self._msg_ids_oldest_ts = 0
 
         # TODO: store request states (i.e. received, processing, acked, etc.)
         # TODO: store whole session in redis or something
@@ -404,6 +409,30 @@ class Session:
 
         return result
 
+    def _check_msg_id_duplicated(self, message_id: int) -> bool:
+        now = int(time())
+        cutoff = now - 300
+
+        if self._msg_ids_oldest_ts == 0:
+            self._msg_ids_oldest_ts = cutoff
+
+        while self._msg_ids_oldest_ts < cutoff:
+            remove_ids = self._msg_ids_buckets.pop(self._msg_ids_oldest_ts, None)
+            if remove_ids:
+                self._msg_ids_seen.difference_update(remove_ids)
+            self._msg_ids_oldest_ts += 1
+
+        if message_id in self._msg_ids_seen:
+            return True
+
+        msg_time = message_id >> 32
+        self._msg_ids_seen.add(message_id)
+        if msg_time not in self._msg_ids_buckets:
+            self._msg_ids_buckets[msg_time] = set()
+        self._msg_ids_buckets[msg_time].add(message_id)
+
+        return False
+
     async def is_message_bad(self, packet: DecryptedMessagePacket, check_salt: bool) -> bool:
         # https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
 
@@ -414,11 +443,11 @@ class Session:
             # 18: incorrect two lower order msg_id bits (the server expects client message msg_id to be divisible by 4)
             logger.debug("Client sent message id which is not divisible by 4")
             error_code = 18
-        elif (packet.message_id >> 32) < (time() - 300):
+        elif (packet.message_id >> 32) < (int(time()) - 300):
             # 16: msg_id too low
             logger.debug("Client sent message id which is too low")
             error_code = 16
-        elif (packet.message_id >> 32) > (time() + 30):
+        elif (packet.message_id >> 32) > (int(time()) + 30):
             # 17: msg_id too high
             logger.debug("Client sent message id which is too low")
             error_code = 17
@@ -430,8 +459,11 @@ class Session:
             # 35: odd msg_seqno expected (relevant message), but even received
             logger.debug("Client sent even seq_no for not content-related message ({tlid})", tlid=hex(inner_id)[2:])
             error_code = 35
+        elif self._check_msg_id_duplicated(packet.message_id):
+            # 19: container msg_id is the same as msg_id of a previously received message (this must never happen)
+            logger.debug("Client sent message with duplicated id")
+            error_code = 19
 
-        # TODO: add validation for message_id duplication (code 19)
         # TODO: what's the difference between code 16 and code 20???
         # TODO: add validation for seq_no too low/high (code 32 and 33)
 
