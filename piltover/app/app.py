@@ -8,8 +8,8 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Awaitable
+from collections.abc import AsyncIterator, Awaitable
+from typing import TYPE_CHECKING
 
 import uvloop
 from loguru import logger
