@@ -9,6 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Awaitable
 
 import uvloop
 from loguru import logger
@@ -34,6 +35,9 @@ try:
     from aiogram.enums import ParseMode
 except ImportError:
     AioGramBot = DefaultBotProperties = ParseMode = None
+
+if TYPE_CHECKING:
+    from aiomonitor import Monitor
 
 
 class ArgsNamespace(SimpleNamespace):
@@ -156,6 +160,13 @@ class PiltoverApp:
         bot = AioGramBot(token=tg_integration.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
         return asyncio.create_task(_dispatcher.start_polling(bot))
 
+    @staticmethod
+    async def _await_ignore_cancellation(coro: Awaitable) -> None:
+        try:
+            await coro
+        except asyncio.CancelledError:
+            pass
+
     async def run(self, host: str | None = None, port: int | None = None):
         if SYSTEM_CONFIG.debug_tracing:
             Tracing.init(SYSTEM_CONFIG.debug_tracing.backend, zipkin_address=SYSTEM_CONFIG.debug_tracing.zipkin_address)
@@ -170,7 +181,7 @@ class PiltoverApp:
             no_sign=fp.to_bytes(8, "big", signed=True).hex(),
         )
 
-        await Tortoise.init(config=TORTOISE_ORM)
+        tortoise_ctx = await Tortoise.init(config=TORTOISE_ORM)
 
         await create_system_data(
             args, args.create_system_user, args.create_auth_countries, args.create_reactions, args.create_chat_themes,
@@ -182,20 +193,25 @@ class PiltoverApp:
 
         logger.success(f"Running on {self._host}:{self._port}")
 
-        monitor = None
+        monitor: Monitor | None = None
         if SYSTEM_CONFIG.debug_enable_aiomonitor:
             import aiomonitor
             loop = asyncio.get_running_loop()
             monitor = aiomonitor.start_monitor(loop)
 
-        await self._gateway.serve()
-        if scheduler_task is not None:
-            await scheduler_task
-        if telegram_integration_task is not None:
-            await telegram_integration_task
+        await self._await_ignore_cancellation(self._gateway.serve())
 
-        if SYSTEM_CONFIG.debug_enable_aiomonitor:
-            monitor.stop()
+        if scheduler_task is not None:
+            scheduler_task.cancel()
+            await self._await_ignore_cancellation(scheduler_task)
+        if telegram_integration_task is not None:
+            telegram_integration_task.cancel()
+            await self._await_ignore_cancellation(telegram_integration_task)
+
+        await tortoise_ctx.close_connections()
+
+        if monitor is not None:
+            monitor.close()
 
     @asynccontextmanager
     async def run_test(
