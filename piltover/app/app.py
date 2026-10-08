@@ -29,13 +29,6 @@ from piltover.utils.debug.measure_queryset_times import patch_queryset_for_measu
 from piltover.utils.debug.tracing import Tracing
 from piltover.worker import Worker
 
-try:
-    from aiogram import Bot as AioGramBot
-    from aiogram.client.default import DefaultBotProperties
-    from aiogram.enums import ParseMode
-except ImportError:
-    AioGramBot = DefaultBotProperties = ParseMode = None
-
 if TYPE_CHECKING:
     from aiomonitor import Monitor
 
@@ -153,7 +146,14 @@ class PiltoverApp:
     @staticmethod
     def _run_telegram_integration() -> asyncio.Task | None:
         tg_integration = SYSTEM_CONFIG.telegram_integration
-        if not tg_integration.enabled or AioGramBot is None:
+        if not tg_integration.enabled:
+            return None
+
+        try:
+            from aiogram import Bot as AioGramBot
+            from aiogram.client.default import DefaultBotProperties
+            from aiogram.enums import ParseMode
+        except ImportError:
             return None
 
         from .telegram_integration_bot import dp as _dispatcher
@@ -353,6 +353,6 @@ if __name__ == "__main__":
         patch_queryset_for_measurement()
 
     try:
-        uvloop.run(app.run())
+        uvloop.run(app.run(), debug=True)
     except KeyboardInterrupt:
         pass
