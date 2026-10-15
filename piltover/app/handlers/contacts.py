@@ -1,6 +1,6 @@
 import hmac
 from base64 import urlsafe_b64encode, urlsafe_b64decode
-from datetime import date, timedelta, datetime, UTC
+from datetime import timedelta, datetime, UTC
 from hashlib import sha256
 from time import time
 from typing import cast
@@ -16,7 +16,7 @@ from piltover.db.models import User, Peer, Contact, Username, Dialog, Presence, 
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked, ImportedContact, \
-    ExportedContactToken, Long, TLObjectVector, PeerUser, ContactStatus, PeerChannel, LongVector
+    ExportedContactToken, Long, TLObjectVector, PeerUser, ContactStatus, PeerChannel, LongVector, Birthday
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_133, Unblock_133, \
     ResolveUsername_133, ImportContacts, ExportContactToken, ImportContactToken, GetContactIDs, ResetSaved
@@ -213,7 +213,7 @@ async def get_birthdays(user_id: int) -> ContactBirthdays:
             continue
         birthdays.append(ContactBirthday(
             contact_id=user.id,
-            birthday=user.to_tl_birthday_noprivacycheck(),
+            birthday=cast(Birthday, user.to_tl_birthday_noprivacycheck()),
         ))
         users_to_tl.append(user)
 

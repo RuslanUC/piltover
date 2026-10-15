@@ -2,7 +2,7 @@ from datetime import datetime, UTC
 from typing import cast, TypeVar, overload, Literal
 
 from tortoise.expressions import Q
-from tortoise.functions import Max
+from tortoise.functions import Max, Count
 from tortoise.queryset import QuerySet
 
 import piltover.app.utils.updates_manager as upd
@@ -288,18 +288,23 @@ async def toggle_dialog_pin(request: ToggleDialogPin, user_id: int):
     if (dialog.pinned_index is not None) == request.pinned:
         return True
 
+    # TODO: run in transaction
+
     if request.pinned:
-        max_index = cast(
-            int | None,
+        max_index_and_count = cast(
+            tuple[int | None, int] | None,
             cast(
                 object,
                 await Dialog.filter(
-                    owner=user_id, folder_id=dialog.folder_id, visible=True,
-                ).annotate(max_pinned_index=Max("pinned_index")).first().values_list("max_pinned_index", flat=True)
+                    owner=user_id, folder_id=dialog.folder_id, visible=True, pinned_index__not_isnull=True,
+                ).annotate(
+                    max_pinned_index=Max("pinned_index"), pinned_count=Count("id")
+                ).first().values_list("max_pinned_index", "pinned_count")
             )
         )
+        max_index, pinned_count = max_index_and_count or (-1, 0)
         pinned_index = (max_index or -1) + 1
-        if pinned_index > 10:
+        if pinned_count >= 10:
             raise ErrorRpc(error_code=400, error_message="PINNED_DIALOGS_TOO_MUCH")
         dialog.pinned_index = pinned_index
     else:
