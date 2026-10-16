@@ -1,6 +1,6 @@
 import pytest
 from pyrogram.errors import BadRequest, PeerIdInvalid, PinnedDialogsTooMuch
-from pyrogram.raw.functions.messages import GetPinnedDialogs, ToggleDialogPin
+from pyrogram.raw.functions.messages import GetPinnedDialogs, ToggleDialogPin, ReorderPinnedDialogs
 from pyrogram.raw.types import PeerChat, InputDialogPeer, InputDialogPeerFolder
 from pyrogram.raw.types.messages import PeerDialogs
 
@@ -132,3 +132,53 @@ async def test_dialogs_pin_unpin(client_with_auth: ClientFactory) -> None:
     assert isinstance(dialogs, PeerDialogs)
     pinned_peers = [dialog.peer for dialog in dialogs.dialogs]
     assert pinned_peers == [peer3, peer1]
+
+
+@pytest.mark.parametrize(
+    ("peers_num", "pinned_peers_num", "order", "force", "expected"),
+    [
+        (4, 3, (0, 1, 2), False, (0, 1, 2)),
+        (4, 3, (1,), False, (1, 0, 2)),
+        (4, 3, (1, 0), True, (1, 0)),
+    ],
+    ids=(
+        "reorder all",
+        "reorder one",
+        "reorder some - force",
+    )
+)
+@pytest.mark.asyncio
+async def test_dialogs_pin_reorder(
+        client_with_auth: ClientFactory, peers_num: int, pinned_peers_num: int, order: tuple[int, ...], force: bool,
+        expected: tuple[int, ...],
+) -> None:
+    client = await client_with_auth(run=True)
+    chats = [await client.create_group(f"chat {i}", []) for i in range(peers_num)]
+
+    peers = [
+        await client.resolve_peer(chat.id)
+        for idx, chat in enumerate(chats)
+        if idx < pinned_peers_num
+    ]
+
+    for peer in peers:
+        await client.invoke(ToggleDialogPin(peer=InputDialogPeer(peer=peer), pinned=True))
+
+    dialogs = await client.invoke(GetPinnedDialogs(folder_id=0))
+    assert isinstance(dialogs, PeerDialogs)
+    pinned_peers = [dialog.peer for dialog in dialogs.dialogs]
+    assert pinned_peers == peers[::-1]
+
+    await client.invoke(ReorderPinnedDialogs(
+        folder_id=0,
+        order=[
+            InputDialogPeer(peer=peers[idx])
+            for idx in order
+        ],
+        force=force,
+    ))
+
+    dialogs = await client.invoke(GetPinnedDialogs(folder_id=0))
+    assert isinstance(dialogs, PeerDialogs)
+    pinned_peers = [dialog.peer for dialog in dialogs.dialogs]
+    assert pinned_peers == [peers[idx] for idx in expected]
