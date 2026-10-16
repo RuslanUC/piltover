@@ -1,7 +1,8 @@
 import pytest
 from pyrogram.errors import BadRequest, PeerIdInvalid, PinnedDialogsTooMuch
-from pyrogram.raw.functions.messages import GetPinnedDialogs, ToggleDialogPin, ReorderPinnedDialogs
-from pyrogram.raw.types import PeerChat, InputDialogPeer, InputDialogPeerFolder
+from pyrogram.raw.functions.messages import GetPinnedDialogs, ToggleDialogPin, ReorderPinnedDialogs, \
+    GetDialogUnreadMarks, MarkDialogUnread
+from pyrogram.raw.types import PeerChat, InputDialogPeer, InputDialogPeerFolder, DialogPeer
 from pyrogram.raw.types.messages import PeerDialogs
 
 from tests.conftest import ClientFactory
@@ -182,3 +183,64 @@ async def test_dialogs_pin_reorder(
     assert isinstance(dialogs, PeerDialogs)
     pinned_peers = [dialog.peer for dialog in dialogs.dialogs]
     assert pinned_peers == [peers[idx] for idx in expected]
+
+
+@pytest.mark.asyncio
+async def test_dialogs_get_marked_unread_empty(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+    chats = [await client.create_group(f"chat {i}", []) for i in range(3)]
+
+    dialogs = await client.invoke(GetDialogUnreadMarks())
+    assert len(dialogs) == 0
+
+
+@pytest.mark.asyncio
+async def test_dialogs_mark_unread(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+    chats = [await client.create_group(f"chat {i}", []) for i in range(3)]
+
+    peer = await client.resolve_peer(chats[0].id)
+    await client.invoke(MarkDialogUnread(peer=InputDialogPeer(peer=peer), unread=True))
+
+    dialogs = await client.invoke(GetDialogUnreadMarks())
+    assert len(dialogs) == 1
+    assert isinstance(dialogs[0], DialogPeer)
+    assert dialogs[0].peer == peer
+
+
+@pytest.mark.asyncio
+async def test_dialogs_mark_unread_twice(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+    chats = [await client.create_group(f"chat {i}", []) for i in range(3)]
+
+    peer = await client.resolve_peer(chats[0].id)
+    await client.invoke(MarkDialogUnread(peer=InputDialogPeer(peer=peer), unread=True))
+    await client.invoke(MarkDialogUnread(peer=InputDialogPeer(peer=peer), unread=True))
+
+    dialogs = await client.invoke(GetDialogUnreadMarks())
+    assert len(dialogs) == 1
+    assert isinstance(dialogs[0], DialogPeer)
+    assert dialogs[0].peer == peer
+
+
+@pytest.mark.asyncio
+async def test_dialogs_mark_unread_then_read(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+    chats = [await client.create_group(f"chat {i}", []) for i in range(3)]
+
+    peer = await client.resolve_peer(chats[0].id)
+    await client.invoke(MarkDialogUnread(peer=InputDialogPeer(peer=peer), unread=True))
+    await client.invoke(MarkDialogUnread(peer=InputDialogPeer(peer=peer), unread=False))
+
+    dialogs = await client.invoke(GetDialogUnreadMarks())
+    assert len(dialogs) == 0
+
+
+@pytest.mark.asyncio
+async def test_dialogs_mark_unread_empty_history(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+    chats = [await client.create_group(f"chat {i}", []) for i in range(3)]
+
+    peer = await client.resolve_peer("self")
+    with pytest.raises(PeerIdInvalid):
+        await client.invoke(MarkDialogUnread(peer=InputDialogPeer(peer=peer)))
