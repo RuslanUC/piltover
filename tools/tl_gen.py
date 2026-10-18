@@ -230,7 +230,6 @@ def get_type_hint(
     is_core = False
 
     if is_flag and not force_optional:
-        print(type_)
         type_ = type_.split("?")[1]
 
     if type_ in CORE_TYPES:
