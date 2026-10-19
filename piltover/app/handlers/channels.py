@@ -1484,7 +1484,7 @@ async def toggle_join_request(request: ToggleJoinRequest, user_id: int) -> Updat
 
     channel.join_request = request.enabled
     channel.version += 1
-    await channel.save(update_fields=["join_to_send", "version"])
+    await channel.save(update_fields=["join_request", "version"])
 
     return await upd.update_channel(channel)
 
