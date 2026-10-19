@@ -7,7 +7,7 @@ class Snowflake:
     EPOCH = 1704067200_000  # 01.01.2024, 00:00:00
     MAX_TIMESTAMP = 1 << 42
     _INCREMENT = 0
-    _WORKER = randint(0, 32)
+    _WORKER = randint(0, 31)
     _PROCESS = getpid()
 
     @classmethod
