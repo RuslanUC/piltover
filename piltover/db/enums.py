@@ -64,6 +64,8 @@ _PRIVACY_ENUM_KEY_TO_TL = {
     PrivacyRuleKeyType.VOICE_MESSAGE: PrivacyKeyVoiceMessages(),
     PrivacyRuleKeyType.ABOUT: PrivacyKeyAbout(),
     PrivacyRuleKeyType.BIRTHDAY: PrivacyKeyBirthday(),
+    PrivacyRuleKeyType.NO_PAID_MESSAGES: InputPrivacyKeyNoPaidMessages(),
+    PrivacyRuleKeyType.GIFTS_AUTOSAVE: InputPrivacyKeyStarGiftsAutoSave(),
 }
 
 
