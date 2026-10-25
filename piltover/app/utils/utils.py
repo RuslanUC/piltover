@@ -480,7 +480,7 @@ async def process_message_entities(
 
 
 def is_username_valid(username: str) -> bool:
-    return 5 < len(username) < 32 and USERNAME_REGEX.match(username) is not None
+    return 5 <= len(username) <= 32 and USERNAME_REGEX.match(username) is not None
 
 
 def validate_username(username: str) -> None:
@@ -554,7 +554,7 @@ async def process_reply_markup(reply_markup: ReplyMarkup | None, user: User) -> 
         processed_rows.append(row := KeyboardButtonRow(buttons=[]))
         for col_idx, button in enumerate(row_to_process.buttons):
             if len(button.text) > 32:
-                reply_markup.text = reply_markup.text[:32]
+                button.text = button.text[:32]
 
             if isinstance(button, KeyboardButtonUrl):
                 if not is_inline:
