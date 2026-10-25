@@ -95,10 +95,7 @@ class _Vector(Vector[T], ABC):
     # noinspection PyMethodParameters
     @classinstancemethod
     def write(cls: type[_Vector[T]], self: list[T]) -> bytes:
-        result = cls.header(len(self))
-        for element in self:
-            result += cls.ELEMENT_TYPE.write(element)
-        return result
+        return cls.header(len(self)) + b"".join(cls.ELEMENT_TYPE.write(element) for element in self)
 
 
 class Int128Vector(_Vector[int]):
@@ -134,7 +131,4 @@ class TLObjectVector(Vector["TObj"]):
     # noinspection PyMethodParameters
     @classinstancemethod
     def write(cls: type[TLObjectVector], self: list[TLObject], ctx: SerializationContext) -> bytes:
-        result = cls.header(len(self))
-        for element in self:
-            result += element.write(ctx)
-        return result
+        return cls.header(len(self)) + b"".join(element.write(ctx) for element in self)
