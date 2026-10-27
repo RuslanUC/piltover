@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import IntFlag, Enum, auto
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 
 import tortoise
 from pypika_tortoise import SqlContext, Dialects
@@ -10,8 +10,6 @@ from pypika_tortoise.utils import format_alias_sql
 from tortoise.expressions import Function, Expression
 from tortoise.indexes import PartialIndex
 from tortoise.models import MODEL
-
-IntFlagT = TypeVar("IntFlagT", bound=IntFlag)
 
 
 class IntFlagFieldInstance(tortoise.fields.BigIntField):
@@ -41,7 +39,7 @@ class IntFlagFieldInstance(tortoise.fields.BigIntField):
         return value
 
 
-def IntFlagField(enum_type: type[IntFlagT], **kwargs: Any) -> IntFlagT:
+def IntFlagField[T: IntFlag](enum_type: type[T], **kwargs: Any) -> T:
     return IntFlagFieldInstance(enum_type, **kwargs)  # type: ignore
 
 

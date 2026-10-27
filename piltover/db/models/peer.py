@@ -43,11 +43,11 @@ class PeerProtocolMin(Protocol[OwnerIdT, UserIdT, ChatIdT, ChannelIdT]):
     def channel_id(self) -> ChannelIdT: ...
 
 
-PeerProtocolMinSelfT: TypeAlias = PeerProtocolMin[int, int, None, None]
-PeerProtocolMinUserT: TypeAlias = PeerProtocolMin[int, int, None, None]
-PeerProtocolMinChatT: TypeAlias = PeerProtocolMin[int, None, int, None]
-PeerProtocolMinChannelT: TypeAlias = PeerProtocolMin[None, None, None, int]
-PeerProtocolMinOwnedT: TypeAlias = PeerProtocolMin[int, int | None, int | None, int | None]
+type PeerProtocolMinSelfT = PeerProtocolMin[int, int, None, None]
+type PeerProtocolMinUserT = PeerProtocolMin[int, int, None, None]
+type PeerProtocolMinChatT = PeerProtocolMin[int, None, int, None]
+type PeerProtocolMinChannelT = PeerProtocolMin[None, None, None, int]
+type PeerProtocolMinOwnedT = PeerProtocolMin[int, int | None, int | None, int | None]
 
 
 def peer_is_self_min(peer: PeerProtocolMin) -> TypeGuard[PeerProtocolMinSelfT]:
@@ -88,12 +88,12 @@ class PeerProtocolFull(
     def channel(self) -> ChannelT: ...
 
 
-PeerProtocolFullSelfT: TypeAlias = PeerProtocolFull["models.User", None, None, int, int, None, None]
-PeerProtocolFullUserT: TypeAlias = PeerProtocolFull["models.User", None, None, int, int, None, None]
-PeerProtocolFullChatT: TypeAlias = PeerProtocolFull[None, "models.Chat", None, int, None, int, None]
-PeerProtocolFullChannelT: TypeAlias = PeerProtocolFull[None, None, "models.Channel", None, None, None, int]
-PeerProtocolFullOwnedT: TypeAlias = PeerProtocolFull[
-    "models.User | None", "models.Chat | None", "models.Channel | None", int, int | None, int | None, int | None
+type PeerProtocolFullSelfT = PeerProtocolFull[models.User, None, None, int, int, None, None]
+type PeerProtocolFullUserT = PeerProtocolFull[models.User, None, None, int, int, None, None]
+type PeerProtocolFullChatT = PeerProtocolFull[None, models.Chat, None, int, None, int, None]
+type PeerProtocolFullChannelT = PeerProtocolFull[None, None, models.Channel, None, None, None, int]
+type PeerProtocolFullOwnedT = PeerProtocolFull[
+    models.User | None, models.Chat | None, models.Channel | None, int, int | None, int | None, int | None
 ]
 
 

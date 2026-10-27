@@ -1,9 +1,4 @@
-from itertools import islice
-from typing import TypeVar
-from collections.abc import Callable, Awaitable, Iterable
-
-T = TypeVar("T")
-TAdd = TypeVar("TAdd")
+from collections.abc import Callable, Awaitable
 
 
 class classinstancemethod:
@@ -35,16 +30,5 @@ def sec_check(cond: bool, exc: type[Exception] = Exception, msg: str | None = No
         raise exc(msg) if msg else exc
 
 
-async def run_coro_with_additional_return(coro: Awaitable[T], additional_obj: TAdd) -> tuple[T, TAdd]:
+async def run_coro_with_additional_return[T, TAdd](coro: Awaitable[T], additional_obj: TAdd) -> tuple[T, TAdd]:
     return await coro, additional_obj
-
-
-# https://docs.python.org/3/library/itertools.html#itertools.batched
-def batched(iterable: Iterable[T], n: int, *, strict: bool=False) -> Iterable[tuple[T, ...]]:
-    if n < 1:
-        raise ValueError("n must be at least one")
-    iterator = iter(iterable)
-    while batch := tuple(islice(iterator, n)):
-        if strict and len(batch) != n:
-            raise ValueError("batched(): incomplete batch")
-        yield batch

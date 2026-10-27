@@ -11,7 +11,7 @@ from piltover.tl import primitives
 from piltover.utils.utils import classinstancemethod
 
 if TYPE_CHECKING:
-    from piltover.tl import TLObject, TObj, SerializationContext
+    from piltover.tl import TLObject, SerializationContext
 
 
 T = TypeVar("T")
@@ -118,7 +118,7 @@ class StringVector(_Vector[str]):
     ELEMENT_TYPE = primitives.String
 
 
-class TLObjectVector(Vector["TObj"]):
+class TLObjectVector[TObj: TLObject](Vector[TObj]):
     def __init__(self, it: Iterable[TObj] = ()) -> None:
         super().__init__(it)
 

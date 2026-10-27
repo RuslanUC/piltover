@@ -1,4 +1,4 @@
-FROM python:3.11-bookworm AS deps
+FROM python:3.13-bookworm AS deps
 
 WORKDIR /piltover
 
@@ -14,7 +14,7 @@ ENV UV_NO_DEV=1
 ENV UV_LINK_MODE=copy
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked
 
-FROM python:3.11-bookworm AS tl
+FROM python:3.13-bookworm AS tl
 
 WORKDIR /piltover
 
@@ -23,7 +23,7 @@ COPY tools tools
 
 RUN python tools/tl_gen.py
 
-FROM python:3.11-bookworm
+FROM python:3.13-bookworm
 
 WORKDIR /piltover
 

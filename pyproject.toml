@@ -20,15 +20,13 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Typing :: Typed",
     "Topic :: Internet",
 ]
 keywords = ["telegram", "server", "mtproto", "mtproto-server"]
-requires-python = ">=3.11.1,<4.0"
+requires-python = ">=3.13,<4.0"
 dependencies = [
     "cryptography (>=50.0.0,<51.0.0)",
     "tgcrypto (>=1.2.5,<2.0.0)",
@@ -164,7 +162,7 @@ exclude = ["piltover/tl/base", "piltover/tl/types", "piltover/tl/functions", "pi
 [tool.ruff]
 line-length = 120
 indent-width = 4
-target-version = "py311"
+target-version = "py313"
 exclude = [
     "piltover/tl/base",
     "piltover/tl/types",

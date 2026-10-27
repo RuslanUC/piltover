@@ -1,38 +1,35 @@
-from collections.abc import Sequence
-from typing import overload, TypeVar, NoReturn, Generic, Any
-from collections.abc import Iterator
-
-_T_co = TypeVar("_T_co", covariant=True)
+from collections.abc import Iterator, Sequence
+from typing import overload, NoReturn, Any
 
 
-class SingleElementListIterator(Iterator[_T_co], Generic[_T_co]):
+class SingleElementListIterator[T](Iterator[T]):
     __slots__ = ("_item", "_iters_left",)
 
-    def __init__(self, item: _T_co, iters_left: int) -> None:
+    def __init__(self, item: T, iters_left: int) -> None:
         self._item = item
         self._iters_left = iters_left
 
-    def __next__(self) -> _T_co:
+    def __next__(self) -> T:
         if self._iters_left <= 0:
             raise StopIteration
         self._iters_left -= 1
         return self._item
 
 
-class SingleElementList(Sequence[_T_co], Generic[_T_co]):
+class SingleElementList[T](Sequence[T]):
     __slots__ = ("_item", "_len",)
 
-    def __init__(self, item: _T_co, length: int = 1) -> None:
+    def __init__(self, item: T, length: int = 1) -> None:
         self._item = item
         self._len = length
 
     @overload
-    def __getitem__(self, index: int) -> _T_co: ...
+    def __getitem__(self, index: int) -> T: ...
 
     @overload
     def __getitem__(self, index: slice) -> NoReturn: ...
 
-    def __getitem__(self, index: int | slice) -> _T_co:
+    def __getitem__(self, index: int | slice) -> T:
         if isinstance(index, slice):
             raise NotImplementedError
         if index >= self._len:
@@ -42,7 +39,7 @@ class SingleElementList(Sequence[_T_co], Generic[_T_co]):
     def __len__(self) -> int:
         return self._len
 
-    def __iter__(self) -> Iterator[_T_co]:
+    def __iter__(self) -> Iterator[T]:
         return SingleElementListIterator(self._item, self._len)
 
     def __contains__(self, x: Any, /) -> bool:

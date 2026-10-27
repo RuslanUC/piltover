@@ -1,5 +1,5 @@
 from datetime import datetime, UTC
-from typing import cast, TypeVar, overload, Literal
+from typing import cast, overload, Literal
 
 from tortoise.expressions import Q
 from tortoise.functions import Max, Count
@@ -21,45 +21,45 @@ from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.dialogs")
-DialogT = TypeVar("DialogT", Dialog, SavedDialog)
-TLDialogsT = TypeVar("TLDialogsT", Dialogs, SavedDialogs)
-TLDialogsSliceT = TypeVar("TLDialogsSliceT", DialogsSlice, SavedDialogsSlice)
+type DialogCls = Dialog | SavedDialog
+type TLDialogsCls = Dialogs | SavedDialogs
+type TLDialogsSliceCls = DialogsSlice | SavedDialogsSlice
 
 
 @overload
-async def format_dialogs(
-        model: type[DialogT], tl_cls: type[TLDialogsT], tl_slice_cls: type[TLDialogsSliceT], user_id: int,
-        dialogs: list[DialogT], allow_slicing: Literal[False] = False, folder_id: int | None = None,
-) -> TLDialogsT:
+async def format_dialogs[DT: DialogCls, DialogsT: TLDialogsCls, DialogsSliceT: TLDialogsSliceCls](
+        model: type[DT], tl_cls: type[DialogsT], tl_slice_cls: type[DialogsSliceT], user_id: int,
+        dialogs: list[DT], allow_slicing: Literal[False] = False, folder_id: int | None = None,
+) -> DialogsT:
     ...
 
 
 @overload
-async def format_dialogs(
-        model: type[DialogT], tl_cls: type[TLDialogsT], tl_slice_cls: type[TLDialogsSliceT], user_id: int,
-        dialogs: list[DialogT], allow_slicing: Literal[True] = True, folder_id: int | None = None,
-) -> TLDialogsT | TLDialogsSliceT:
+async def format_dialogs[DT: DialogCls, DialogsT: TLDialogsCls, DialogsSliceT: TLDialogsSliceCls](
+        model: type[DT], tl_cls: type[DialogsT], tl_slice_cls: type[DialogsSliceT], user_id: int,
+        dialogs: list[DT], allow_slicing: Literal[True] = True, folder_id: int | None = None,
+) -> DialogsT | DialogsSliceT:
     ...
 
 
 @overload
-async def format_dialogs(
-        model: type[DialogT], tl_cls: type[TLDialogsT], tl_slice_cls: type[TLDialogsSliceT], user_id: int,
-        dialogs: list[DialogT], allow_slicing: bool = False, folder_id: int | None = None,
-) -> TLDialogsT | TLDialogsSliceT:
+async def format_dialogs[DT: DialogCls, DialogsT: TLDialogsCls, DialogsSliceT: TLDialogsSliceCls](
+        model: type[DT], tl_cls: type[DialogsT], tl_slice_cls: type[DialogsSliceT], user_id: int,
+        dialogs: list[DT], allow_slicing: bool = False, folder_id: int | None = None,
+) -> DialogsT | DialogsSliceT:
     ...
 
 
-async def format_dialogs(
-        model: type[DialogT], tl_cls: type[TLDialogsT], tl_slice_cls: type[TLDialogsSliceT], user_id: int,
-        dialogs: list[DialogT], allow_slicing: bool = False, folder_id: int | None = None,
-) -> TLDialogsT | TLDialogsSliceT:
-    result: TLDialogsT | TLDialogsSliceT
+async def format_dialogs[DT: DialogCls, DialogsT: TLDialogsCls, DialogsSliceT: TLDialogsSliceCls](
+        model: type[DT], tl_cls: type[DialogsT], tl_slice_cls: type[DialogsSliceT], user_id: int,
+        dialogs: list[DT], allow_slicing: bool = False, folder_id: int | None = None,
+) -> DialogsT | DialogsSliceT:
+    result: DialogsT | DialogsSliceT
 
     if dialogs:
         ucc = UsersChatsChannels()
 
-        dialog_by_peer: dict[int, tuple[DialogT, MessageRef | None]] = {}
+        dialog_by_peer: dict[int, tuple[DT, MessageRef | None]] = {}
         for dialog in dialogs:
             dialog_by_peer[dialog.peer_id] = (dialog, None)
 
@@ -117,41 +117,41 @@ async def format_dialogs(
 
 
 @overload
-async def get_dialogs_internal(
-        model: type[DialogT], tl_cls: type[TLDialogsT], tl_slice_cls: type[TLDialogsSliceT], user_id: int,
+async def get_dialogs_internal[DT: DialogCls, DialogsT: TLDialogsCls, DialogsSliceT: TLDialogsSliceCls](
+        model: type[DT], tl_cls: type[DialogsT], tl_slice_cls: type[DialogsSliceT], user_id: int,
         offset_id: int = 0, offset_date: int = 0, limit: int = 100,
         offset_peer: TLInputPeerBase | None = None, folder_id: int | None = None,
         exclude_pinned: bool = False, allow_slicing: Literal[False] = False,
-) -> TLDialogsT:
+) -> DialogsT:
     ...
 
 
 @overload
-async def get_dialogs_internal(
-        model: type[DialogT], tl_cls: type[TLDialogsT], tl_slice_cls: type[TLDialogsSliceT], user_id: int,
+async def get_dialogs_internal[DT: DialogCls, DialogsT: TLDialogsCls, DialogsSliceT: TLDialogsSliceCls](
+        model: type[DT], tl_cls: type[DialogsT], tl_slice_cls: type[DialogsSliceT], user_id: int,
         offset_id: int = 0, offset_date: int = 0, limit: int = 100,
         offset_peer: TLInputPeerBase | None = None, folder_id: int | None = None,
         exclude_pinned: bool = False, allow_slicing: Literal[True] = True,
-) -> TLDialogsT | TLDialogsSliceT:
+) -> DialogsT | DialogsSliceT:
     ...
 
 
 @overload
-async def get_dialogs_internal(
-        model: type[DialogT], tl_cls: type[TLDialogsT], tl_slice_cls: type[TLDialogsSliceT], user_id: int,
+async def get_dialogs_internal[DT: DialogCls, DialogsT: TLDialogsCls, DialogsSliceT: TLDialogsSliceCls](
+        model: type[DT], tl_cls: type[DialogsT], tl_slice_cls: type[DialogsSliceT], user_id: int,
         offset_id: int = 0, offset_date: int = 0, limit: int = 100,
         offset_peer: TLInputPeerBase | None = None, folder_id: int | None = None,
         exclude_pinned: bool = False, allow_slicing: bool = False,
-) -> TLDialogsT | TLDialogsSliceT:
+) -> DialogsT | DialogsSliceT:
     ...
 
 
-async def get_dialogs_internal(
-        model: type[DialogT], tl_cls: type[TLDialogsT], tl_slice_cls: type[TLDialogsSliceT], user_id: int,
+async def get_dialogs_internal[DT: DialogCls, DialogsT: TLDialogsCls, DialogsSliceT: TLDialogsSliceCls](
+        model: type[DT], tl_cls: type[DialogsT], tl_slice_cls: type[DialogsSliceT], user_id: int,
         offset_id: int = 0, offset_date: int = 0, limit: int = 100,
         offset_peer: TLInputPeerBase | None = None, folder_id: int | None = None,
         exclude_pinned: bool = False, allow_slicing: bool = False,
-) -> TLDialogsT | TLDialogsSliceT:
+) -> DialogsT | DialogsSliceT:
     if limit > 100 or limit < 1:
         limit = 100
 
@@ -198,7 +198,7 @@ async def get_dialogs_internal(
     if issubclass(model, Dialog):
         query &= Q(visible=True)
 
-    dialogs: list[DialogT] = await model.filter(
+    dialogs: list[DT] = await model.filter(
         query
     ).limit(limit).order_by("-peer__last_message_date", "-peer__last_message_id", "-peer_id").select_related("peer")
     return await format_dialogs(model, tl_cls, tl_slice_cls, user_id, dialogs, allow_slicing, folder_id)

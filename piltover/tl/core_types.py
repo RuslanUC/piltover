@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 T = TypeVar("T", bound=TLObject)
 
 
-class Message(TLObject, Generic[T]):
+class Message[T: TLObject](TLObject):
     __tl_id__ = 0x5bb8e511
     __tl_name__ = "Message"
 

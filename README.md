@@ -63,8 +63,8 @@ More complex features such as channels, supergroups, bots, etc. may work with er
 
 Requirements:
 
-- Python 3.11+
-- Poetry
+- Python 3.13+
+- [Uv](https://github.com/astral-sh/uv)
 
 Setup:
 
@@ -74,11 +74,11 @@ Setup:
    ```
 2. Install dependencies:
     ```shell
-    poetry install
+    uv sync
     ```
 3. Generate tl classes:
     ```shell
-    poetry shell python tools/tl_gen.py
+    uv run python tools/tl_gen.py
     ```
 4. (Optional) Install MariaDB, Redis and RabbitMQ.
 5. (Optional) Set up your own config:
@@ -95,7 +95,7 @@ Setup:
     ```
 7. Run:
     ```shell
-    poetry run python -m piltover.app.app
+    uv run python -m piltover.app.app
     ```
    
 Now wait until it loads correctly and fire a Ctrl-C to stop the process.
@@ -222,7 +222,7 @@ run both `piltover.app.app` and `piltover.app.worker` with `--rabbitmq-address` 
   - Change the `modulus` to the **lowercase** string of `prime` obtained previously
 - Run the websocket proxy from piltover
   - ```shell
-    $ poetry run python tools/websocket_proxy.py
+    $ uv run python tools/websocket_proxy.py
     ```
 - Run with `npm start`
 - Wait some time for the app to compile
@@ -250,7 +250,7 @@ run both `piltover.app.app` and `piltover.app.worker` with `--rabbitmq-address` 
   to `connect-src *;`
 - Run the websocket proxy from piltover
   - ```shell
-    $ poetry run python tools/websocket_proxy.py
+    $ uv run python tools/websocket_proxy.py
     ```
 - Run with `npm run dev`
 - Wait some time for the app to compile

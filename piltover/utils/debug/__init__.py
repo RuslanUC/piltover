@@ -6,13 +6,13 @@ from piltover.utils.debug.tracing import Tracing, TraceTime
 
 
 @contextmanager
-def measure_time(name: str, **kwargs) -> Generator[TraceTime, None, None]:
+def measure_time(name: str, **kwargs) -> Generator[TraceTime]:
     with Tracing(name, **kwargs) as time:
         yield time
 
 
 @contextmanager
-def measure_time_to_dict(name: str, out: dict[str, float]) -> Generator[None, None, None]:
+def measure_time_to_dict(name: str, out: dict[str, float]) -> Generator[None]:
     start_time = perf_counter()
     try:
         yield

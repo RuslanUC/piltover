@@ -1,4 +1,5 @@
 import asyncio
+import itertools
 import random
 
 from aiogram import Bot, Dispatcher, html, F
@@ -18,7 +19,6 @@ from piltover.app.handlers.auth import _validate_phone
 from piltover.config import SYSTEM_CONFIG, APP_CONFIG, TORTOISE_ORM
 from piltover.db.models import User, TelegramUser
 from piltover.exceptions import ErrorRpc
-from piltover.utils.utils import batched
 
 NEW_ACCOUNT_BTN_TEXT = "Create new account"
 LIST_ACCOUNTS_BTN_TEXT = "List my accounts"
@@ -287,7 +287,7 @@ async def list_accounts_btn_handler(message: Message) -> None:
                 )
                 for user in users_batch
             ]
-            for users_batch in batched(all_users, 2)
+            for users_batch in itertools.batched(all_users, 2, strict=False)
         ],
     )
 

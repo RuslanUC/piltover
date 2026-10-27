@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod, ABC
 from io import BytesIO
-from typing import Generic, TypeVar, Self, TYPE_CHECKING
+from typing import Self, TYPE_CHECKING
 
 from piltover import tl
 from piltover.exceptions import Error, InvalidConstructorException, UnknownConstructorException
@@ -95,9 +95,5 @@ class TLObject(ABC):
         return True
 
 
-T = TypeVar("T")
-TObj = TypeVar("TObj", bound=TLObject)
-
-
-class TLRequest(TLObject, ABC, Generic[T]):
+class TLRequest[T: object](TLObject, ABC):
     ...

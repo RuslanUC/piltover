@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from enum import IntEnum
 from typing import Generic, TypeVar, Self, Protocol
 from collections.abc import Callable, Awaitable
 
@@ -18,7 +19,7 @@ class SendMessageFunc(Protocol):
         ...
 
 
-class HandlerBase(ABC, Generic[StateEnumT, StateT]):
+class HandlerBase[StateT: BotUserStateBase](ABC):
     @abstractmethod
     async def __call__(self, peer: Peer, message: MessageRef, state: StateT | None) -> MessageRef | None:
         ...
@@ -32,7 +33,7 @@ class FuncHandler(HandlerBase):
         return await self._func(peer, message, state)
 
 
-class SimpleHandler(HandlerBase[StateEnumT, StateT]):
+class SimpleHandler[StateEnumT: IntEnum, StateT: BotUserStateBase](HandlerBase[StateT]):
     def __init__(
             self,
             set_state: StateEnumT | None,
@@ -54,7 +55,7 @@ class SimpleHandler(HandlerBase[StateEnumT, StateT]):
             return await self._send_message(peer, self._respond_text, entities=self._respond_entities)
 
 
-class PendingHandler:
+class PendingHandler[StateEnumT: IntEnum]:
     def __init__(self) -> None:
         self.state: StateEnumT | None = None
         self.func: HandlerFunc | None = None
@@ -76,13 +77,13 @@ class PendingHandler:
         return pending
 
 
-class RegisterInteraction(Generic[StateEnumT, StateT]):
+class RegisterInteraction[StateEnumT: IntEnum, StateT: BotUserStateBase]:
     def __init__(self, int_handler: BotInteractionHandler) -> None:
         self._int_handler = int_handler
         self._handlers: dict[StateEnumT, HandlerBase[StateEnumT, StateT]] = {}
         self._need_fetch_state: bool = False
         self._otherwise: HandlerBase[StateEnumT, StateT] | None = None
-        self._pending: PendingHandler = PendingHandler()
+        self._pending: PendingHandler[StateEnumT] = PendingHandler()
         self._send_message_func: SendMessageFunc | None = None
 
     @property
@@ -180,7 +181,7 @@ class RegisterInteraction(Generic[StateEnumT, StateT]):
         return reg
 
 
-class RegisterCommand(RegisterInteraction[StateEnumT, StateT]):
+class RegisterCommand[StateEnumT: IntEnum, StateT: BotUserStateBase](RegisterInteraction[StateEnumT, StateT]):
     def __init__(self, name: str, int_handler: BotInteractionHandler) -> None:
         super().__init__(int_handler)
         self._name = name
@@ -195,7 +196,7 @@ class RegisterCommand(RegisterInteraction[StateEnumT, StateT]):
         return reg
 
 
-class BotInteractionHandler(Generic[StateEnumT, StateT]):
+class BotInteractionHandler[StateEnumT: IntEnum, StateT: BotUserStateBase]:
     def __init__(self, state_cls: type[StateT] | None) -> None:
         self.state_cls = state_cls
         self._commands_registry: dict[tuple[str, StateEnumT | None], HandlerBase[StateEnumT, StateT]] = {}
