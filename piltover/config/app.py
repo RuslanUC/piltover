@@ -55,6 +55,8 @@ class _AppConfig(BaseModel):
     max_bots_per_user: int = 24
     username_change_protection_seconds: int = 1800
 
+    enable_url_previews: bool = False
+
     gifs: _Gifs | None = None
 
 

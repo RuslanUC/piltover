@@ -81,6 +81,9 @@ max_bots_per_user = 24
 # Set to 0 or any negative value to disable username change protection
 username_change_protection_seconds = 1800  # 60 * 30
 
+# Whether to enable url previews (with site name, page title and description)
+enable_url_previews = false
+
 #[app.gifs]
 # Gifs search provider. Currently supported: klipy.
 #provider = "klipy"

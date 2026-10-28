@@ -7,6 +7,7 @@ from pylinkify import find_urls
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import process_send_as
 from piltover.app.utils.utils import extract_url_metadata
+from piltover.config import APP_CONFIG
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Presence, ChatParticipant, DefaultSendAs, Channel, Chat
 from piltover.enums import ReqHandlerFlags
@@ -150,6 +151,12 @@ async def save_default_send_as(request: SaveDefaultSendAs, user_id: int) -> bool
 
 @handler.on_request(GetWebPagePreview, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_webpage_preview(request: GetWebPagePreview) -> WebPagePreview:
+    if not APP_CONFIG.enable_url_previews:
+        return WebPagePreview(
+            media=MessageMediaEmpty(),
+            users=[],
+        )
+
     for start, end in find_urls(request.message, require_scheme=True):
         if not request.message.startswith("https://", start, end):
             continue
