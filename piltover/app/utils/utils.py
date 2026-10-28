@@ -15,11 +15,14 @@ from uuid import UUID
 
 import av
 import gmpy2
+import lxml.etree
 from PIL.Image import Image, open as img_open
 from av import VideoFrame
+from httpx import AsyncClient
 from loguru import logger
 from pylinkify import find_urls
 
+from piltover.app.utils.lxml_metadata_target import WebpageMetaTarget, UrlMetadataDict
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleKeyType, FileType, PeerType
 from piltover.db.models import UserPassword, User, Peer, PrivacyRule, File, Chat, Channel
@@ -101,6 +104,7 @@ TELEGRAM_QUANTIZATION_TABLES = {
 
 image_executor = ThreadPoolExecutor(thread_name_prefix="ImageResizeWorker")
 video_executor = ThreadPoolExecutor(thread_name_prefix="VideoMetadataWorker")
+url_metadata_executor = ThreadPoolExecutor(thread_name_prefix="UrlMetadataWorker")
 
 
 def _resize_image_internal(
@@ -627,3 +631,26 @@ async def get_chat_or_channel_from_peer(
     if chat_or_channel is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
     return chat_or_channel
+
+
+IP_REGEX = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}")
+
+
+async def extract_url_metadata(url: str) -> UrlMetadataDict:
+    parsed = urlparse(url)
+    if parsed.netloc.startswith("[") or IP_REGEX.fullmatch(parsed.netloc.split(":")[0]):
+        return {}
+
+    target = WebpageMetaTarget()
+    parser = lxml.etree.HTMLPullParser(target=target)
+    loop = asyncio.get_running_loop()
+
+    async with AsyncClient(headers={"User-Agent": "PiltoverBot"}) as client, client.stream("GET", url) as resp:
+        num = 1
+        async for chunk in resp.aiter_bytes(32 * 1024):
+            await loop.run_in_executor(url_metadata_executor, parser.feed, chunk)
+            if target.should_stop() or num >= 4:
+                break
+
+    return target.get_parsed_meta()
+

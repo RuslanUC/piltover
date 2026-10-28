@@ -1,16 +1,22 @@
+from urllib.parse import urlparse
+
 from fastrand import xorshift128plus_bytes
+from loguru import logger
+from pylinkify import find_urls
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import process_send_as
+from piltover.app.utils.utils import extract_url_metadata
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Presence, ChatParticipant, DefaultSendAs, Channel, Chat
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
-from piltover.tl import UpdateUserTyping, DefaultHistoryTTL, UpdateChatUserTyping, UpdateChannelUserTyping
+from piltover.tl import UpdateUserTyping, DefaultHistoryTTL, UpdateChatUserTyping, UpdateChannelUserTyping, \
+    MessageMediaEmpty, MessageMediaWebPage, WebPage
 from piltover.tl.functions.messages import SetTyping, GetDhConfig, GetDefaultHistoryTTL, SetDefaultHistoryTTL, \
-    SaveDefaultSendAs
-from piltover.tl.types.messages import DhConfig, DhConfigNotModified
+    SaveDefaultSendAs, GetWebPagePreview
+from piltover.tl.types.messages import DhConfig, DhConfigNotModified, WebPagePreview
 from piltover.utils import gen_safe_prime
 from piltover.utils.gen_primes import CURRENT_DH_VERSION
 from piltover.worker import MessageHandler
@@ -140,3 +146,43 @@ async def save_default_send_as(request: SaveDefaultSendAs, user_id: int) -> bool
 
     await upd.update_channel_for_user(group, user_id)
     return True
+
+
+@handler.on_request(GetWebPagePreview, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def get_webpage_preview(request: GetWebPagePreview) -> WebPagePreview:
+    for start, end in find_urls(request.message, require_scheme=True):
+        if not request.message.startswith("https://", start, end):
+            continue
+        url = request.message[start:end]
+        break
+    else:
+        return WebPagePreview(
+            media=MessageMediaEmpty(),
+            users=[],
+        )
+
+    logger.info(f"Getting metadata for {url}")
+    meta = await extract_url_metadata(url)
+    if "title" not in meta:
+        return WebPagePreview(
+            media=MessageMediaEmpty(),
+            users=[],
+        )
+
+    parsed = urlparse(url)
+
+    return WebPagePreview(
+        media=MessageMediaWebPage(
+            webpage=WebPage(
+                id=123,
+                url=url,
+                display_url=url,
+                hash=0,
+                type_="article",
+                site_name=meta.get("site_name", parsed.netloc),
+                title=meta["title"],
+                description=meta.get("description"),
+            ),
+        ),
+        users=[],
+    )

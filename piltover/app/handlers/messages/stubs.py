@@ -1,17 +1,15 @@
 from piltover.enums import ReqHandlerFlags
-from piltover.tl import WebPageEmpty, AttachMenuBots, EmojiKeywordsDifference, PeerSettings, TLObjectVector, \
-    MessageMediaEmpty
+from piltover.tl import WebPageEmpty, AttachMenuBots, EmojiKeywordsDifference, PeerSettings, TLObjectVector
 from piltover.tl.base.channels import SponsoredMessageReportResult
 from piltover.tl.functions.channels import GetSponsoredMessages_133
 from piltover.tl.functions.messages import GetPeerSettings, GetQuickReplies, GetMessageEditData, \
     GetEmojiKeywordsLanguages, GetWebPage, GetTopReactions, GetAttachMenuBots, GetStickers, GetSuggestedDialogFilters, \
-    GetSavedReactionTags, GetFeaturedStickers, GetFeaturedEmojiStickers, GetEmojiKeywords, GetWebPagePreview, \
-    GetDefaultTagReactions, GetEmojiKeywordsDifference, GetAvailableEffects, GetSponsoredMessages, \
-    ReportSponsoredMessage, ViewSponsoredMessage, ClickSponsoredMessage
+    GetSavedReactionTags, GetFeaturedStickers, GetFeaturedEmojiStickers, GetEmojiKeywords, GetDefaultTagReactions, \
+    GetEmojiKeywordsDifference, GetAvailableEffects, GetSponsoredMessages, ReportSponsoredMessage, \
+    ViewSponsoredMessage, ClickSponsoredMessage
 from piltover.tl.types.channels import SponsoredMessageReportResultReported
 from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Reactions, SavedReactionTags, Stickers, \
-    FeaturedStickers, MessageEditData, QuickReplies, AvailableEffects, SponsoredMessages, SponsoredMessagesEmpty, \
-    WebPagePreview
+    FeaturedStickers, MessageEditData, QuickReplies, AvailableEffects, SponsoredMessages, SponsoredMessagesEmpty
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stubs")
@@ -74,14 +72,6 @@ async def get_featured_stickers():  # pragma: no cover
 @handler.on_request(GetEmojiKeywords, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_emoji_keywords(request: GetEmojiKeywords):  # pragma: no cover
     return EmojiKeywordsDifference(lang_code=request.lang_code, from_version=0, version=0, keywords=[])
-
-
-@handler.on_request(GetWebPagePreview, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_webpage_preview():  # pragma: no cover
-    return WebPagePreview(
-        media=MessageMediaEmpty(),
-        users=[],
-    )
 
 
 @handler.on_request(GetMessageEditData, ReqHandlerFlags.AUTH_NOT_REQUIRED)
