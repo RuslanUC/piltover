@@ -94,6 +94,7 @@ class MediaType(IntEnum):
     CONTACT = 3
     GEOPOINT = 4
     DICE = 5
+    WEBPAGE = 6
 
 
 class UpdateType(IntEnum):

@@ -88,6 +88,7 @@ async def send_scheduled_messages(request: SendScheduledMessages, user_id: int) 
             messages = await scheduled.send_scheduled(task.opposite)
             msg_updates = await sending.send_created_messages_internal(
                 messages, task.opposite, scheduled.peer, user_id, False, False, task.mentioned_users_set,
+                task.no_webpage,
             )
             await scheduled.content.delete()
 

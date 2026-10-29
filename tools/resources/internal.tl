@@ -256,3 +256,4 @@ internal.update_status_for_peers#ed609074 peer_type:int peer_owner:long peer_use
 internal.clear_draft#b8b19f5d user_id:long peer_id:long = Bool;
 internal.send_telegram_message#b1210a96 user_id:long text:string = Bool;
 internal.extract_url_metadata#b2a32666 flags:# webpage_id:long notify_session:flags.0?internal.UserAndSessionId = Bool;
+internal.add_message_webpage_preview#88185f6e flags:# message_content_id:long = Bool;

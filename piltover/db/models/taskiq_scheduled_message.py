@@ -18,6 +18,7 @@ class TaskIqScheduledMessage(Model):
     message: models.MessageRef = fields.OneToOneField("models.MessageRef")
     mentioned_users: bytes | None = fields.BinaryField(null=True)
     opposite: bool = fields.BooleanField()
+    no_webpage: bool = fields.BooleanField(default=True)
 
     message_id: int
 

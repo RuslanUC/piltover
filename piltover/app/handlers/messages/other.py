@@ -159,6 +159,7 @@ async def get_webpage_preview(request: GetWebPagePreview) -> WebPagePreview:
             users=[],
         )
 
+    # TODO: ignore text inside entities, support url entity
     for start, end in find_urls(request.message, require_scheme=True):
         if not request.message.startswith("https://", start, end) or (end - start) > 512:
             continue
@@ -171,10 +172,7 @@ async def get_webpage_preview(request: GetWebPagePreview) -> WebPagePreview:
         )
 
     now = datetime.now(UTC)
-    webpage, created = await WebpageMetadata.get_or_create(
-        url=url,
-        created_at__gt=now - timedelta(days=7),
-    )
+    webpage, created = await WebpageMetadata.get_or_create(url=url, created_at__gt=now - timedelta(days=7))
 
     if created or webpage.pending and (now - webpage.created_at) < timedelta(seconds=30):
         ctx = request_ctx.get()

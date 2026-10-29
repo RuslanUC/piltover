@@ -1,26 +1,28 @@
 from collections import defaultdict
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 from typing import cast
 
 from httpx import URL
 from loguru import logger
+from pylinkify import find_urls
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers import bots
 from piltover.app.handlers.messages.sending import send_created_messages_internal, _resolve_noforwards
 from piltover.app.utils.utils import extract_url_metadata
-from piltover.config import SYSTEM_CONFIG
-from piltover.db.enums import PeerType
+from piltover.config import SYSTEM_CONFIG, APP_CONFIG
+from piltover.db.enums import PeerType, MediaType
 from piltover.db.models import Peer, MessageRef, MessageContent, User, Presence, MessageDraft, Channel, \
-    TaskIqScheduledMessage, TelegramUser, WebpageMetadata, State
+    TaskIqScheduledMessage, TelegramUser, WebpageMetadata, State, MessageMedia
 from piltover.db.models.peer import peer_is_owned_min, peer_is_channel
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import Unreachable
 from piltover.session import SessionManager
-from piltover.tl import TLObject, UpdateWebPage
+from piltover.tl import TLObject, UpdateWebPage, MessageMediaWebPage
 from piltover.tl.functions.internal import SendScheduledMessage, DeleteScheduledMessage, CreateDiscussionThread, \
-    ProcessMessageToBuiltinBot, UpdateStatusForPeers, ClearDraft, SendTelegramMessage, ExtractUrlMetadata
+    ProcessMessageToBuiltinBot, UpdateStatusForPeers, ClearDraft, SendTelegramMessage, ExtractUrlMetadata, \
+    AddMessageWebpagePreview
 from piltover.tl.types.internal import TaggedBool, UserAndSessionId
 from piltover.worker import MessageHandler
 
@@ -61,6 +63,7 @@ async def send_scheduled_message(request: SendScheduledMessage) -> TLObject:
 
     await send_created_messages_internal(
         messages, task.opposite, scheduled.peer, scheduled_by_user_id, False, False, task.mentioned_users_set,
+        task.no_webpage,
     )
 
     peer = scheduled.peer
@@ -250,15 +253,13 @@ async def _send_webpage_update_maybe(user_and_session_id: UserAndSessionId | Non
     )
 
 
-@handler.on_request(ExtractUrlMetadata, ReqHandlerFlags.INTERNAL)
-async def extract_url_metadata_handler(request: ExtractUrlMetadata) -> TLObject:
-    logger.trace("Getting metadata for webpage {webpage_id}", webpage_id=request.webpage_id)
-
+async def _fetch_webpage_metadata(webpage_id: int) -> WebpageMetadata:
     async with in_transaction():
-        webpage = await WebpageMetadata.select_for_update().get(id=request.webpage_id)
+        webpage = await WebpageMetadata.select_for_update().get(id=webpage_id)
         if not webpage.pending:
-            await _send_webpage_update_maybe(request.notify_session, webpage)
-            return TaggedBool(value=True)
+            return webpage
+
+        logger.trace("Getting metadata for webpage {webpage_id}", webpage_id=webpage_id)
 
         meta = await extract_url_metadata(webpage.url)
         if "title" not in meta:
@@ -266,8 +267,7 @@ async def extract_url_metadata_handler(request: ExtractUrlMetadata) -> TLObject:
             await WebpageMetadata.filter(id=webpage.id).update(**update_fields)
             # make PyCharm not complain about "Coroutine update_from_dict is not awaited "
             _ = webpage.update_from_dict(update_fields)
-            await _send_webpage_update_maybe(request.notify_session, webpage)
-            return TaggedBool(value=True)
+            return webpage
 
         final_url = meta.get("final_url", URL(webpage.url))
         description = meta.get("description")
@@ -282,9 +282,63 @@ async def extract_url_metadata_handler(request: ExtractUrlMetadata) -> TLObject:
         }
 
         await WebpageMetadata.filter(id=webpage.id).update(**update_fields)
+        _ = webpage.update_from_dict(update_fields)
+        return webpage
 
-    # make PyCharm not complain about "Coroutine update_from_dict is not awaited "
-    _ = webpage.update_from_dict(update_fields)
+
+@handler.on_request(ExtractUrlMetadata, ReqHandlerFlags.INTERNAL)
+async def extract_url_metadata_handler(request: ExtractUrlMetadata) -> TLObject:
+    if not APP_CONFIG.enable_url_previews:
+        return TaggedBool(value=True)
+
+    webpage = await _fetch_webpage_metadata(request.webpage_id)
     await _send_webpage_update_maybe(request.notify_session, webpage)
+    return TaggedBool(value=True)
+
+
+@handler.on_request(AddMessageWebpagePreview, ReqHandlerFlags.INTERNAL)
+async def add_message_webpage_preview(request: AddMessageWebpagePreview) -> TLObject:
+    if not APP_CONFIG.enable_url_previews:
+        return TaggedBool(value=True)
+
+    async with in_transaction():
+        content = await MessageContent.select_for_update().get(id=request.message_content_id)
+        text = cast(str, content.message)
+
+        # TODO: ignore text inside entities, support url entity
+        for start, end in find_urls(text, require_scheme=True):
+            if not text.startswith("https://", start, end) or (end - start) > 512:
+                continue
+            url = text[start:end]
+            break
+        else:
+            return TaggedBool(value=True)
+
+        now = datetime.now(UTC)
+        webpage, created = await WebpageMetadata.get_or_create(url=url, created_at__gt=now - timedelta(days=7))
+        if created or webpage.pending:
+            webpage = await _fetch_webpage_metadata(webpage.id)
+
+        if webpage.title is None:
+            return TaggedBool(value=True)
+
+        content.media = await MessageMedia.create(type=MediaType.WEBPAGE, static_data=MessageMediaWebPage(
+            webpage=webpage.to_tl(),
+        ).write())
+        content.version += 1
+        await content.save(update_fields=["media_id", "version"])
+
+        # TODO: updates
+
+    messages = await MessageRef.filter(content_id=content.id).select_related(
+        *MessageRef.PREFETCH_FIELDS, "peer__channel",
+    )
+    if not messages:
+        return TaggedBool(value=False)
+
+    if messages[0].peer.channel_id is not None:
+        await upd.edit_message_channel(messages[0].peer.channel, messages[0])
+    else:
+        await upd.edit_message(0, {message.peer: message for message in messages})
 
     return TaggedBool(value=True)

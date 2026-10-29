@@ -34,7 +34,7 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
     InputDocument, InputPhoto, InputFile, InputFileBig, InputReplyToMessage_166, MessageEntityBotCommand
 from piltover.tl.base import InputPeer as TLInputPeerBase, InputMedia as TLInputMediaBase
 from piltover.tl.functions.internal import CreateDiscussionThread, ProcessMessageToBuiltinBot, UpdateStatusForPeers, \
-    ClearDraft
+    ClearDraft, AddMessageWebpagePreview
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
@@ -86,7 +86,7 @@ async def _extract_mentions_from_message(entities: list[dict], text: str, author
 
 async def send_created_messages_internal(
         messages: list[MessageRef], opposite: bool, peer: Peer, user_id: int, user_is_bot: bool,
-        clear_draft: bool, mentioned_user_ids: set[int],
+        clear_draft: bool, mentioned_user_ids: set[int], no_webpage: bool,
 ) -> Updates:
     ctx = request_ctx.get(None)
 
@@ -166,9 +166,18 @@ async def send_created_messages_internal(
     if (update := await upd.send_message(user_id, messages)) is None:
         raise Unreachable
 
+    message_ref = messages[0]
+
     if peer.user and peer.user.system and peer.user.bot and ctx is not None:
-        message_ref = messages[0]
         await ctx.worker.call_internal(ProcessMessageToBuiltinBot(messageref_id=message_ref.id))
+
+    if APP_CONFIG.enable_url_previews \
+            and not no_webpage \
+            and message_ref.content.type is MessageType.REGULAR \
+            and message_ref.content.media_id is None \
+            and message_ref.content.message \
+            and "https://" in messages[0].content.message:
+        await ctx.worker.call_internal(AddMessageWebpagePreview(message_content_id=message_ref.content_id))
 
     return update
 
@@ -178,7 +187,7 @@ async def send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool,
         author: User | int, opposite: bool = True, scheduled_date: int | None = None, unhide_dialog: bool = True, *,
         text: str | None = None, entities: list[dict[str, int | str]] | None = None, quote_text: str | None = None,
-        quote_offset: int | None = None,
+        quote_offset: int | None = None, no_webpage: bool = False,
         **message_kwargs
 ) -> Updates:
     """
@@ -293,12 +302,13 @@ async def send_message_internal(
             message=message,
             mentioned_users=mentioned_users,
             opposite=real_opposite,
+            no_webpage=no_webpage,
         )
 
         return await upd.new_scheduled_message(user.id, message)
 
     updates = await send_created_messages_internal(
-        messages, opposite, peer, user.id, user.bot, clear_draft, mentioned_user_ids,
+        messages, opposite, peer, user.id, user.bot, clear_draft, mentioned_user_ids, no_webpage,
     )
 
     # TODO: select count if messages between last read and new message instead of this
@@ -550,6 +560,8 @@ async def send_message(
         quote_text = request.reply_to.quote_text if isinstance(request.reply_to, INPUT_REPLY_QUOTE) else None
         quote_offset = request.reply_to.quote_offset if isinstance(request.reply_to, InputReplyToMessage) else None
 
+    # TODO: invert_media
+
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user,
@@ -565,6 +577,7 @@ async def send_message(
         send_as_channel_id=send_as_channel_id,
         quote_text=quote_text,
         quote_offset=quote_offset,
+        no_webpage=request.no_webpage,
     )
 
 
