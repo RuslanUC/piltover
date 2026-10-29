@@ -14,7 +14,7 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
 from piltover.tl import UpdateUserTyping, DefaultHistoryTTL, UpdateChatUserTyping, UpdateChannelUserTyping, \
-    MessageMediaEmpty, MessageMediaWebPage, WebPage, WebPagePending
+    MessageMediaEmpty, MessageMediaWebPage, WebPagePending
 from piltover.tl.functions.internal import ExtractUrlMetadata
 from piltover.tl.functions.messages import SetTyping, GetDhConfig, GetDefaultHistoryTTL, SetDefaultHistoryTTL, \
     SaveDefaultSendAs, GetWebPagePreview

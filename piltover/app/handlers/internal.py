@@ -262,9 +262,10 @@ async def extract_url_metadata_handler(request: ExtractUrlMetadata) -> TLObject:
 
         meta = await extract_url_metadata(webpage.url)
         if "title" not in meta:
-            webpage.title = None
-            webpage.pending = False
-            await WebpageMetadata.filter(id=webpage.id).update(pending=False, title=None)
+            update_fields = {"title": None, "pending": False}
+            await WebpageMetadata.filter(id=webpage.id).update(**update_fields)
+            # make PyCharm not complain about "Coroutine update_from_dict is not awaited "
+            _ = webpage.update_from_dict(update_fields)
             await _send_webpage_update_maybe(request.notify_session, webpage)
             return TaggedBool(value=True)
 
@@ -273,17 +274,17 @@ async def extract_url_metadata_handler(request: ExtractUrlMetadata) -> TLObject:
 
         # TODO: download image
 
-        await WebpageMetadata.filter(id=webpage.id).update(
-            pending=False,
-            title=meta["title"][:128],
-            site_name=meta.get("site_name", final_url.host)[:64],
-            description=description[:512] if description else None,
-        )
+        update_fields = {
+            "pending": False,
+            "title": meta["title"][:128],
+            "site_name": meta.get("site_name", final_url.host)[:64],
+            "description": description[:512] if description else None,
+        }
 
-    webpage.pending = False
-    webpage.title = meta["title"][:128]
-    webpage.site_name = meta.get("site_name", final_url.host)[:64]
-    webpage.description = description[:512] if description else None
+        await WebpageMetadata.filter(id=webpage.id).update(**update_fields)
+
+    # make PyCharm not complain about "Coroutine update_from_dict is not awaited "
+    _ = webpage.update_from_dict(update_fields)
     await _send_webpage_update_maybe(request.notify_session, webpage)
 
     return TaggedBool(value=True)
