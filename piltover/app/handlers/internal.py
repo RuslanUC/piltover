@@ -1,23 +1,26 @@
 from collections import defaultdict
 from datetime import datetime, UTC
 from typing import cast
+from urllib.parse import urlparse
 
+from httpx import URL
 from loguru import logger
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers import bots
 from piltover.app.handlers.messages.sending import send_created_messages_internal, _resolve_noforwards
+from piltover.app.utils.utils import extract_url_metadata
 from piltover.config import SYSTEM_CONFIG
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, MessageRef, MessageContent, User, Presence, MessageDraft, Channel, \
-    TaskIqScheduledMessage, TelegramUser
+    TaskIqScheduledMessage, TelegramUser, WebpageMetadata
 from piltover.db.models.peer import peer_is_owned_min, peer_is_channel
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import Unreachable
 from piltover.tl import TLObject
 from piltover.tl.functions.internal import SendScheduledMessage, DeleteScheduledMessage, CreateDiscussionThread, \
-    ProcessMessageToBuiltinBot, UpdateStatusForPeers, ClearDraft, SendTelegramMessage
+    ProcessMessageToBuiltinBot, UpdateStatusForPeers, ClearDraft, SendTelegramMessage, ExtractUrlMetadata
 from piltover.tl.types.internal import TaggedBool
 from piltover.worker import MessageHandler
 
@@ -225,5 +228,34 @@ async def send_telegram_message(request: SendTelegramMessage) -> TLObject:
             )
         except TelegramAPIError as e:
             logger.opt(exception=e).error("Failed to send telegram message")
+
+    return TaggedBool(value=True)
+
+
+@handler.on_request(ExtractUrlMetadata, ReqHandlerFlags.INTERNAL)
+async def extract_url_metadata_handler(request: ExtractUrlMetadata) -> TLObject:
+    logger.trace("Getting metadata for webpage {webpage_id}", webpage_id=request.webpage_id)
+
+    async with in_transaction():
+        webpage = await WebpageMetadata.select_for_update().get_or_none(id=request.webpage_id, pending=True)
+        if webpage is None:
+            return TaggedBool(value=False)
+
+        meta = await extract_url_metadata(webpage.url)
+        if "title" not in meta:
+            await WebpageMetadata.filter(id=webpage.id).update(pending=False, title=None)
+            return TaggedBool(value=True)
+
+        final_url = meta.get("final_url", URL(webpage.url))
+        description = meta.get("description")
+
+        # TODO: download image
+
+        await WebpageMetadata.filter(id=webpage.id).update(
+            pending=False,
+            title=meta["title"][:128],
+            site_name=meta.get("site_name", final_url.host)[:64],
+            description=description[:512] if description else None,
+        )
 
     return TaggedBool(value=True)

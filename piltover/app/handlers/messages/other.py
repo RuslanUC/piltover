@@ -1,20 +1,21 @@
-from urllib.parse import urlparse
+from datetime import timedelta, UTC, datetime
 
 from fastrand import xorshift128plus_bytes
-from loguru import logger
 from pylinkify import find_urls
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import process_send_as
-from piltover.app.utils.utils import extract_url_metadata
+from piltover.app.utils.utils import telegram_hash
 from piltover.config import APP_CONFIG
+from piltover.context import request_ctx
 from piltover.db.enums import PeerType
-from piltover.db.models import User, Peer, Presence, ChatParticipant, DefaultSendAs, Channel, Chat
+from piltover.db.models import User, Peer, Presence, ChatParticipant, DefaultSendAs, Channel, Chat, WebpageMetadata
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
 from piltover.tl import UpdateUserTyping, DefaultHistoryTTL, UpdateChatUserTyping, UpdateChannelUserTyping, \
-    MessageMediaEmpty, MessageMediaWebPage, WebPage
+    MessageMediaEmpty, MessageMediaWebPage, WebPage, WebPagePending
+from piltover.tl.functions.internal import ExtractUrlMetadata
 from piltover.tl.functions.messages import SetTyping, GetDhConfig, GetDefaultHistoryTTL, SetDefaultHistoryTTL, \
     SaveDefaultSendAs, GetWebPagePreview
 from piltover.tl.types.messages import DhConfig, DhConfigNotModified, WebPagePreview
@@ -158,7 +159,7 @@ async def get_webpage_preview(request: GetWebPagePreview) -> WebPagePreview:
         )
 
     for start, end in find_urls(request.message, require_scheme=True):
-        if not request.message.startswith("https://", start, end):
+        if not request.message.startswith("https://", start, end) or (end - start) > 512:
             continue
         url = request.message[start:end]
         break
@@ -168,27 +169,43 @@ async def get_webpage_preview(request: GetWebPagePreview) -> WebPagePreview:
             users=[],
         )
 
-    logger.info(f"Getting metadata for {url}")
-    meta = await extract_url_metadata(url)
-    if "title" not in meta:
+    now = datetime.now(UTC)
+    webpage, created = await WebpageMetadata.get_or_create(
+        url=url,
+        created_at__gt=now - timedelta(days=7),
+    )
+
+    if created or webpage.pending and (now - webpage.created_at) < timedelta(seconds=30):
+        await request_ctx.get().worker.call_internal(ExtractUrlMetadata(webpage_id=webpage.id))
+        return WebPagePreview(
+            media=MessageMediaWebPage(
+                webpage=WebPagePending(
+                    id=webpage.id,
+                    url=url,
+                    date=int(webpage.created_at.timestamp()),
+                ),
+            ),
+            users=[],
+        )
+
+    if webpage.title is None:
         return WebPagePreview(
             media=MessageMediaEmpty(),
             users=[],
         )
 
-    parsed = urlparse(url)
-
     return WebPagePreview(
         media=MessageMediaWebPage(
             webpage=WebPage(
-                id=123,
-                url=url,
-                display_url=url,
-                hash=0,
+                id=webpage.id,
+                url=webpage.url,
+                display_url=webpage.url,
+                hash=telegram_hash((webpage.url, int(webpage.created_at.timestamp())), 32),
                 type_="article",
-                site_name=meta.get("site_name", parsed.netloc),
-                title=meta["title"],
-                description=meta.get("description"),
+                site_name=webpage.site_name[:32],
+                title=webpage.title[:64],
+                description=webpage.description[:192] if webpage.description else None,
+                # TODO: include photo
             ),
         ),
         users=[],

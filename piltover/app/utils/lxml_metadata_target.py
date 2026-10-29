@@ -1,11 +1,14 @@
 from typing import TypedDict
 
+from httpx import URL
+
 
 class UrlMetadataDict(TypedDict, total=False):
     title: str
     description: str
     image: str
     site_name: str
+    final_url: URL
 
 
 class WebpageMetaTarget:

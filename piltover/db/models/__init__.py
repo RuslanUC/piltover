@@ -98,3 +98,4 @@ from .uploading_file_small_part import UploadingFileSmallPart
 from .uploading_file_big_part import UploadingFileBigPart
 from .uploading_file_small import UploadingFileSmall
 from .uploading_file_big import UploadingFileBig
+from .webpage_metadata import WebpageMetadata
