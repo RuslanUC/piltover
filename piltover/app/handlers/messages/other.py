@@ -1,11 +1,11 @@
 from datetime import timedelta, UTC, datetime
+from typing import cast
 
 from fastrand import xorshift128plus_bytes
 from pylinkify import find_urls
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import process_send_as
-from piltover.app.utils.utils import telegram_hash
 from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
@@ -18,6 +18,7 @@ from piltover.tl import UpdateUserTyping, DefaultHistoryTTL, UpdateChatUserTypin
 from piltover.tl.functions.internal import ExtractUrlMetadata
 from piltover.tl.functions.messages import SetTyping, GetDhConfig, GetDefaultHistoryTTL, SetDefaultHistoryTTL, \
     SaveDefaultSendAs, GetWebPagePreview
+from piltover.tl.types.internal import UserAndSessionId
 from piltover.tl.types.messages import DhConfig, DhConfigNotModified, WebPagePreview
 from piltover.utils import gen_safe_prime
 from piltover.utils.gen_primes import CURRENT_DH_VERSION
@@ -176,13 +177,20 @@ async def get_webpage_preview(request: GetWebPagePreview) -> WebPagePreview:
     )
 
     if created or webpage.pending and (now - webpage.created_at) < timedelta(seconds=30):
-        await request_ctx.get().worker.call_internal(ExtractUrlMetadata(webpage_id=webpage.id))
+        ctx = request_ctx.get()
+        await ctx.worker.call_internal(ExtractUrlMetadata(
+            webpage_id=webpage.id,
+            notify_session=UserAndSessionId(
+                user_id=cast(int, ctx.user_id),
+                session_id=cast(int, ctx.auth_id),
+            ),
+        ))
         return WebPagePreview(
             media=MessageMediaWebPage(
                 webpage=WebPagePending(
                     id=webpage.id,
                     url=url,
-                    date=int(webpage.created_at.timestamp()),
+                    date=int(webpage.created_at.timestamp()) + 10,
                 ),
             ),
             users=[],
@@ -196,17 +204,7 @@ async def get_webpage_preview(request: GetWebPagePreview) -> WebPagePreview:
 
     return WebPagePreview(
         media=MessageMediaWebPage(
-            webpage=WebPage(
-                id=webpage.id,
-                url=webpage.url,
-                display_url=webpage.url,
-                hash=telegram_hash((webpage.url, int(webpage.created_at.timestamp())), 32),
-                type_="article",
-                site_name=webpage.site_name[:32],
-                title=webpage.title[:64],
-                description=webpage.description[:192] if webpage.description else None,
-                # TODO: include photo
-            ),
+            webpage=webpage.to_tl(),
         ),
         users=[],
     )

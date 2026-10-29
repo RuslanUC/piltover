@@ -1,7 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, UTC
 from typing import cast
-from urllib.parse import urlparse
 
 from httpx import URL
 from loguru import logger
@@ -14,14 +13,15 @@ from piltover.app.utils.utils import extract_url_metadata
 from piltover.config import SYSTEM_CONFIG
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, MessageRef, MessageContent, User, Presence, MessageDraft, Channel, \
-    TaskIqScheduledMessage, TelegramUser, WebpageMetadata
+    TaskIqScheduledMessage, TelegramUser, WebpageMetadata, State
 from piltover.db.models.peer import peer_is_owned_min, peer_is_channel
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import Unreachable
-from piltover.tl import TLObject
+from piltover.session import SessionManager
+from piltover.tl import TLObject, UpdateWebPage
 from piltover.tl.functions.internal import SendScheduledMessage, DeleteScheduledMessage, CreateDiscussionThread, \
     ProcessMessageToBuiltinBot, UpdateStatusForPeers, ClearDraft, SendTelegramMessage, ExtractUrlMetadata
-from piltover.tl.types.internal import TaggedBool
+from piltover.tl.types.internal import TaggedBool, UserAndSessionId
 from piltover.worker import MessageHandler
 
 try:
@@ -232,18 +232,40 @@ async def send_telegram_message(request: SendTelegramMessage) -> TLObject:
     return TaggedBool(value=True)
 
 
+async def _send_webpage_update_maybe(user_and_session_id: UserAndSessionId | None, webpage: WebpageMetadata) -> None:
+    if not user_and_session_id:
+        return
+
+    await SessionManager.send(
+        upd.UpdatesWithDefaults(
+            updates=[
+                UpdateWebPage(
+                    webpage=webpage.to_tl(),
+                    pts=await State.add_pts(user_and_session_id.user_id, 0),
+                    pts_count=0,
+                ),
+            ],
+        ),
+        auth_id=user_and_session_id.session_id,
+    )
+
+
 @handler.on_request(ExtractUrlMetadata, ReqHandlerFlags.INTERNAL)
 async def extract_url_metadata_handler(request: ExtractUrlMetadata) -> TLObject:
     logger.trace("Getting metadata for webpage {webpage_id}", webpage_id=request.webpage_id)
 
     async with in_transaction():
-        webpage = await WebpageMetadata.select_for_update().get_or_none(id=request.webpage_id, pending=True)
-        if webpage is None:
-            return TaggedBool(value=False)
+        webpage = await WebpageMetadata.select_for_update().get(id=request.webpage_id)
+        if not webpage.pending:
+            await _send_webpage_update_maybe(request.notify_session, webpage)
+            return TaggedBool(value=True)
 
         meta = await extract_url_metadata(webpage.url)
         if "title" not in meta:
+            webpage.title = None
+            webpage.pending = False
             await WebpageMetadata.filter(id=webpage.id).update(pending=False, title=None)
+            await _send_webpage_update_maybe(request.notify_session, webpage)
             return TaggedBool(value=True)
 
         final_url = meta.get("final_url", URL(webpage.url))
@@ -257,5 +279,11 @@ async def extract_url_metadata_handler(request: ExtractUrlMetadata) -> TLObject:
             site_name=meta.get("site_name", final_url.host)[:64],
             description=description[:512] if description else None,
         )
+
+    webpage.pending = False
+    webpage.title = meta["title"][:128]
+    webpage.site_name = meta.get("site_name", final_url.host)[:64]
+    webpage.description = description[:512] if description else None
+    await _send_webpage_update_maybe(request.notify_session, webpage)
 
     return TaggedBool(value=True)
