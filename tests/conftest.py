@@ -7,7 +7,7 @@ import logging
 import os
 from asyncio import Task, CancelledError
 from contextlib import AsyncExitStack
-from http.server import SimpleHTTPRequestHandler, HTTPSServer
+from http.server import SimpleHTTPRequestHandler
 from os import urandom
 from pathlib import Path
 from threading import Thread
@@ -27,6 +27,7 @@ from tortoise import connections
 from tortoise.backends.sqlite import SqliteClient
 
 from tests import server_instance, USE_REAL_TCP_FOR_TESTING, test_phone_number, skipping_auth
+from tests._https_server import HTTPSServer
 
 if TYPE_CHECKING:
     from piltover.gateway import Gateway
