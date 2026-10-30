@@ -18,12 +18,12 @@ from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyT
     InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages, \
     UpdateNewChannelMessage, UpdateEditChannelMessage, UpdateDraftMessage, DraftMessage, DraftMessageEmpty, Updates, \
     UpdateMessageID, MessageMediaPoll, UpdatePinnedMessages, MessageService, MessageActionPinMessage, InputPeerEmpty, \
-    PeerUser, Dialog, MessageMediaEmpty, MessageMediaWebPage, WebPagePending, WebPage
+    PeerUser, Dialog, MessageMediaEmpty, MessageMediaWebPage, WebPagePending, WebPage, UpdateEditMessage, Message
 from pyrogram.raw.types.messages import Messages, AffectedHistory, SearchResultsCalendar, DialogsSlice
 from pyrogram.types import InputMediaDocument, ChatPermissions
 from tortoise.expressions import F, Subquery
 
-from piltover.db.models import MessageRef, Peer, User, MessageContent
+from piltover.db.models import MessageRef, Peer, User, MessageContent, Update
 from piltover.tl import InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers, Long
 from tests.client import TestClient
 from tests.conftest import ClientFactory, ChannelWithClientsFactory
@@ -1810,3 +1810,21 @@ async def test_get_webpage_preview(client_with_auth: ClientFactory, web_server: 
     else:
         assert False
 
+
+@pytest.mark.asyncio
+async def test_send_message_webpage_preview(client_with_auth: ClientFactory, web_server: int) -> None:
+    client = await client_with_auth(run=True)
+
+    message = await client.send_message("self", f"https://localhost:{web_server}/preview_og_tags.html")
+    assert message.media is None
+
+    update = await client.expect_update(UpdateEditMessage, timeout_=3)
+    new_message = update.message
+    assert isinstance(new_message, Message)
+    assert new_message.id == message.id
+    media = new_message.media
+    assert isinstance(media, MessageMediaWebPage)
+    assert isinstance(media.webpage, WebPage)
+    assert media.webpage.title == "Test page"
+    assert media.webpage.description == "Test description"
+    assert media.webpage.site_name == "Test website"
