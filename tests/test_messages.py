@@ -12,17 +12,16 @@ from pyrogram.errors import NotAcceptable, Forbidden
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel, SetDiscussionGroup
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
     GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL, SaveDraft, GetMessagesViews, \
-    SendMessage, ForwardMessages, GetDialogs, ReadHistory
+    SendMessage, ForwardMessages, GetDialogs, ReadHistory, GetWebPagePreview
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
     InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages, \
     UpdateNewChannelMessage, UpdateEditChannelMessage, UpdateDraftMessage, DraftMessage, DraftMessageEmpty, Updates, \
     UpdateMessageID, MessageMediaPoll, UpdatePinnedMessages, MessageService, MessageActionPinMessage, InputPeerEmpty, \
-    PeerUser, Dialog
+    PeerUser, Dialog, MessageMediaEmpty, MessageMediaWebPage, WebPagePending, WebPage
 from pyrogram.raw.types.messages import Messages, AffectedHistory, SearchResultsCalendar, DialogsSlice
 from pyrogram.types import InputMediaDocument, ChatPermissions
 from tortoise.expressions import F, Subquery
 
-from piltover.db.enums import PeerType
 from piltover.db.models import MessageRef, Peer, User, MessageContent
 from piltover.tl import InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers, Long
 from tests.client import TestClient
@@ -1750,3 +1749,63 @@ async def test_messages_are_marked_as_read_after_sending(client_with_auth: Clien
         offset_date=0, offset_id=0, offset_peer=InputPeerEmpty(), limit=1, hash=0,
     ))
     assert dialogs.dialogs[0].unread_count == 0
+
+
+@pytest.mark.asyncio
+async def test_get_webpage_preview_empty_no_url(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+
+    preview = await client.invoke(GetWebPagePreview(message="asd qwe"))
+    assert isinstance(preview, MessageMediaEmpty)
+
+
+@pytest.mark.asyncio
+async def test_get_webpage_preview_empty_not_https(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+
+    preview = await client.invoke(GetWebPagePreview(message="http://example.com"))
+    assert isinstance(preview, MessageMediaEmpty)
+
+
+@pytest.mark.asyncio
+async def test_get_webpage_preview_empty_ip_address(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+
+    preview = await client.invoke(GetWebPagePreview(message="https://127.0.0.1/test"))
+    assert isinstance(preview, MessageMediaWebPage)
+    assert isinstance(preview.webpage, WebPagePending)
+
+    for _ in range(2):
+        preview = await client.invoke(GetWebPagePreview(message="https://127.0.0.1/test"))
+        if isinstance(preview, MessageMediaWebPage) and isinstance(preview.webpage, WebPagePending):
+            await asyncio.sleep(1)
+            continue
+
+        assert isinstance(preview, MessageMediaEmpty)
+        break
+    else:
+        assert False
+
+
+@pytest.mark.asyncio
+async def test_get_webpage_preview(client_with_auth: ClientFactory, web_server: int) -> None:
+    client = await client_with_auth(run=True)
+
+    preview = await client.invoke(GetWebPagePreview(message=f"https://localhost:{web_server}/preview_og_tags.html"))
+    assert isinstance(preview, MessageMediaWebPage)
+    assert isinstance(preview.webpage, WebPagePending)
+
+    for _ in range(2):
+        preview = await client.invoke(GetWebPagePreview(message=f"https://localhost:{web_server}/preview_og_tags.html"))
+        assert isinstance(preview, MessageMediaWebPage)
+        if isinstance(preview.webpage, WebPagePending):
+            await asyncio.sleep(1)
+            continue
+        assert isinstance(preview.webpage, WebPage)
+        assert preview.webpage.title == "Test page"
+        assert preview.webpage.description == "Test description"
+        assert preview.webpage.site_name == "Test website"
+        break
+    else:
+        assert False
+

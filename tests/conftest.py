@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import builtins
 import hashlib
 import logging
+import os
 from asyncio import Task, CancelledError
 from contextlib import AsyncExitStack
+from http.server import SimpleHTTPRequestHandler, HTTPSServer
 from os import urandom
-from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Protocol, overload, Literal, NoReturn, Any, Generator
+from pathlib import Path
+from threading import Thread
+from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Protocol, overload, Literal, NoReturn, Any, Generator, \
+    AsyncGenerator
 
 import pytest
 import pytest_asyncio
@@ -449,3 +455,32 @@ async def channel_with_clients(
         return channel_id, tuple(clients)
 
     return _create_clients_and_channel
+
+
+@pytest_asyncio.fixture()
+async def web_server() -> AsyncGenerator[int]:
+    loop = asyncio.get_running_loop()
+    web_root = Path(__file__).parent / "webserver"
+
+    httpd = HTTPSServer(
+        server_address=("localhost", 0),
+        RequestHandlerClass=lambda req, addr, srv: SimpleHTTPRequestHandler(req, addr, srv, directory=web_root),
+        certfile=web_root / "cert.pem",
+        keyfile=web_root / "key.pem",
+        bind_and_activate=True,
+    )
+    thread = Thread(target=httpd.serve_forever)
+    thread.start()
+
+    cert_prev = os.environ.get("SSL_CERT_FILE")
+    os.environ["SSL_CERT_FILE"] = str(web_root / "cert.pem")
+
+    yield cast(int, httpd.server_address[1])
+
+    if cert_prev:
+        os.environ["SSL_CERT_FILE"] = cert_prev
+    else:
+        del os.environ["SSL_CERT_FILE"]
+
+    await loop.run_in_executor(None, httpd.shutdown)
+    await loop.run_in_executor(None, thread.join)

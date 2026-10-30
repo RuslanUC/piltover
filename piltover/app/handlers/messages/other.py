@@ -15,9 +15,10 @@ from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
 from piltover.tl import UpdateUserTyping, DefaultHistoryTTL, UpdateChatUserTyping, UpdateChannelUserTyping, \
     MessageMediaEmpty, MessageMediaWebPage, WebPagePending
+from piltover.tl.base import MessageMedia
 from piltover.tl.functions.internal import ExtractUrlMetadata
 from piltover.tl.functions.messages import SetTyping, GetDhConfig, GetDefaultHistoryTTL, SetDefaultHistoryTTL, \
-    SaveDefaultSendAs, GetWebPagePreview
+    SaveDefaultSendAs, GetWebPagePreview, GetWebPagePreview_133
 from piltover.tl.types.internal import UserAndSessionId
 from piltover.tl.types.messages import DhConfig, DhConfigNotModified, WebPagePreview
 from piltover.utils import gen_safe_prime
@@ -151,7 +152,7 @@ async def save_default_send_as(request: SaveDefaultSendAs, user_id: int) -> bool
     return True
 
 
-@handler.on_request(GetWebPagePreview, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetWebPagePreview, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_webpage_preview(request: GetWebPagePreview) -> WebPagePreview:
     if not APP_CONFIG.enable_url_previews:
         return WebPagePreview(
@@ -206,3 +207,10 @@ async def get_webpage_preview(request: GetWebPagePreview) -> WebPagePreview:
         ),
         users=[],
     )
+
+
+@handler.on_request(GetWebPagePreview_133, ReqHandlerFlags.DONT_FETCH_USER)
+async def get_webpage_preview_133(request: GetWebPagePreview_133) -> MessageMedia:
+    preview = await get_webpage_preview(GetWebPagePreview(message=request.message, entities=request.entities))
+    return preview.media
+
