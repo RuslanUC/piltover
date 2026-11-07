@@ -18,7 +18,7 @@ import gmpy2
 import lxml.etree
 from PIL.Image import Image, open as img_open
 from av import VideoFrame
-from httpx import AsyncClient
+from httpx import AsyncClient, RequestError
 from loguru import logger
 from pylinkify import find_urls
 
@@ -645,22 +645,23 @@ async def extract_url_metadata(url: str) -> UrlMetadataDict:
     parser = lxml.etree.HTMLPullParser(target=target)
     loop = asyncio.get_running_loop()
 
-    # TODO: handle network and timeout errors
+    try:
+        async with (
+            AsyncClient(headers={"User-Agent": "PiltoverBot"}, follow_redirects=True, timeout=15) as client,
+            client.stream("GET", url) as resp
+        ):
+            if resp.status_code >= 400 or "text/html" not in resp.headers.get("Content-Type", ""):
+                return {}
 
-    async with (
-        AsyncClient(headers={"User-Agent": "PiltoverBot"}, follow_redirects=True, timeout=15) as client,
-        client.stream("GET", url) as resp
-    ):
-        if resp.status_code >= 400 or "text/html" not in resp.headers.get("Content-Type", ""):
-            return {}
+            final_url = resp.url
 
-        final_url = resp.url
-
-        num = 1
-        async for chunk in resp.aiter_bytes(32 * 1024):
-            await loop.run_in_executor(url_metadata_executor, parser.feed, chunk)
-            if target.should_stop() or num >= 4:
-                break
+            num = 1
+            async for chunk in resp.aiter_bytes(32 * 1024):
+                await loop.run_in_executor(url_metadata_executor, parser.feed, chunk)
+                if target.should_stop() or num >= 4:
+                    break
+    except RequestError:
+        return {}
 
     meta = target.get_parsed_meta()
     meta["final_url"] = final_url
